@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using SmallTown.Crime;
+using SmallTown.Networking;
 using SmallTown.Npc;
 using UnityEditor;
 using UnityEngine;
@@ -209,11 +210,17 @@ namespace SmallTown.EditorTools
             return agent;
         }
 
-        static GameObject Save(GameObject root, string name)
+        static GameObject Save(GameObject root, string name, bool moves, bool spawnedAtRuntime)
         {
             ProjectSetup.EnsureFolder(NpcFolder);
-            GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, NpcFolder + "/" + name + ".prefab");
+            // Every NPC is a shared object: the host thinks for it, everyone sees it.
+            NetBuilder.MakeShared(root, moves, false, false);
+            root.AddComponent<NetNpc>();
+            string path = NpcFolder + "/" + name + ".prefab";
+            GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
             Object.DestroyImmediate(root);
+            NetBuilder.VerifyPrefabHash(path);
+            if (spawnedAtRuntime) NetBuilder.Register(prefab);
             return prefab;
         }
 
@@ -222,7 +229,7 @@ namespace SmallTown.EditorTools
             GameObject root = BuildNpcBody("Officer", "Officer", "PoliceCap");
             AddAgent(root, 2.4f);
             root.AddComponent<PoliceOfficer>().Configure(root.GetComponent<NpcBody>());
-            return Save(root, "Officer");
+            return Save(root, "Officer", true, true);
         }
 
         public static GameObject BuildPedestrianPrefab(string variant)
@@ -230,12 +237,12 @@ namespace SmallTown.EditorTools
             GameObject root = BuildNpcBody("Pedestrian_" + variant, variant, null);
             AddAgent(root, 1.1f);
             root.AddComponent<Pedestrian>().Configure(root.GetComponent<NpcBody>(), new Transform[0]);
-            return Save(root, "Pedestrian_" + variant);
+            return Save(root, "Pedestrian_" + variant, true, false);
         }
 
         public static GameObject BuildStaticNpcPrefab(string name, string variant, string hat)
         {
-            return Save(BuildNpcBody(name, variant, hat), name);
+            return Save(BuildNpcBody(name, variant, hat), name, false, false);
         }
     }
 }

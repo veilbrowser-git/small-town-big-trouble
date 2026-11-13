@@ -30,7 +30,10 @@ namespace SmallTown.Interaction
         int historyCount;
         float clock;
         bool gripDown;
+        bool wasHolding;
         GrabbableItem hovered;
+        GrabbableItem pending;
+        float pendingUntil;
 
         public event Action<HandGrabber, GrabbableItem> Grabbed;
         public event Action<HandGrabber, GrabbableItem> Released;
@@ -40,6 +43,9 @@ namespace SmallTown.Interaction
         public GrabbableItem Held { get; private set; }
         public bool IsHolding => Held != null;
         public GrabbableItem Hovered => hovered;
+        public bool GripDown => gripDown;
+        /// <summary>Network client ID of the player this hand belongs to (0 when offline).</summary>
+        public ulong OwnerId => Net.LocalClientId;
 
         public void Configure(PlayerRig owner, Hand side, StorageBag storage)
         {
@@ -76,6 +82,12 @@ namespace SmallTown.Interaction
                 // The item was taken away from us (stored, consumed, despawned).
                 ClearHeld();
             }
+            else if (wasHolding && Held == null)
+            {
+                // The held object was destroyed outright (sold, confiscated, removed by the host).
+                ClearHeld();
+            }
+            if (pending != null && (clock > pendingUntil || !gripDown)) pending = null;
 
             if (gripDown && !wasDown && Held == null) TryGrab();
             else if (!gripDown && wasDown && Held != null) ReleaseHeld();
@@ -153,11 +165,41 @@ namespace SmallTown.Interaction
             TryGrabItem(candidate);
         }
 
-        /// <summary>Grabs a specific item if allowed. Returns true on success.</summary>
+        /// <summary>
+        /// Grabs a specific item if allowed. Returns true if it is in the hand now.
+        /// For a shared item the host may need to be asked first; then this returns
+        /// false and the grab completes a moment later through <see cref="CompleteGrab"/>.
+        /// </summary>
         public bool TryGrabItem(GrabbableItem item)
         {
+            if (item == null || Held != null || !item.CanGrab(this)) return false;
+            // Already asked the host for this one; do not ask twice.
+            if (pending == item) return false;
+            if (item.Authority != null)
+            {
+                GrabDecision decision = item.Authority.RequestGrab(this);
+                if (decision == GrabDecision.Deny) return false;
+                if (decision == GrabDecision.Pending)
+                {
+                    pending = item;
+                    pendingUntil = clock + 1.5f;
+                    return false;
+                }
+            }
+            return CompleteGrab(item);
+        }
+
+        /// <summary>True while this hand is still waiting on the host for that item.</summary>
+        public bool IsPending(GrabbableItem item) => pending != null && pending == item;
+
+        /// <summary>Finishes a grab that has been approved.</summary>
+        public bool CompleteGrab(GrabbableItem item)
+        {
+            pending = null;
             if (item == null || Held != null || !item.Grab(this)) return false;
             Held = item;
+            wasHolding = true;
+            item.Authority?.OnGrabbed(this);
             // Design rule: a hand that is carrying something does not propel the player
             // (unless the settings asset opts in). The other hand still does.
             rig.Motor.SetHandCanPush(hand, rig.Motor.Settings.occupiedHandsCanPush);
@@ -201,6 +243,7 @@ namespace SmallTown.Interaction
         void ClearHeld()
         {
             Held = null;
+            wasHolding = false;
             if (rig != null && rig.Motor != null) rig.Motor.SetHandCanPush(hand, true);
         }
 

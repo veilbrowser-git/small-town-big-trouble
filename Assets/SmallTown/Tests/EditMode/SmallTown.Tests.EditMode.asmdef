@@ -5,7 +5,9 @@
     "SmallTown.Runtime",
     "UnityEngine.TestRunner",
     "UnityEditor.TestRunner",
-    "Unity.TextMeshPro"
+    "Unity.TextMeshPro",
+    "Unity.Netcode.Runtime",
+    "Unity.Collections"
   ],
   "includePlatforms": [
     "Editor"

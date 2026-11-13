@@ -27,6 +27,13 @@ namespace SmallTown.Items
         public string owner = "";
         public bool stolen;
 
+        /// <summary>
+        /// Game time before which this cannot be turned into money. Cash straight out
+        /// of a register is "hot": it cannot be pocketed in the seconds before the
+        /// alarm goes off, only once the carrier has actually got away.
+        /// </summary>
+        [System.NonSerialized] public float hotUntil;
+
         string instanceId;
 
         /// <summary>True once this item has been turned into money. It can never pay out again.</summary>

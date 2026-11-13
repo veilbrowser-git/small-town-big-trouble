@@ -1,16 +1,16 @@
 using System.Collections.Generic;
 using SmallTown.Economy;
-using SmallTown.Locomotion;
 using UnityEngine;
 
 namespace SmallTown.Crime
 {
     /// <summary>
     /// Decides how much police the town sends and what each officer is told.
-    /// Host-authoritative in co-op. Level 1: the local beat cop looks into it.
+    /// Runs on the host only. Level 1: the local beat cop looks into it.
     /// Level 2: three officers and the patrol car. Level 3: five officers and a
-    /// roadblock on the main street. The dispatcher only ever knows where a
-    /// suspect is from reports and from what officers currently see.
+    /// roadblock on the main street. The response is sized to the most wanted
+    /// player, but every player's wanted level is tracked separately, and an
+    /// officer only ever chases a wanted player it can actually see.
     /// </summary>
     public sealed class PoliceDispatcher : MonoBehaviour
     {
@@ -23,10 +23,14 @@ namespace SmallTown.Crime
         [Min(1)] public int poolSize = 5;
 
         readonly List<PoliceOfficer> officers = new List<PoliceOfficer>();
-        WantedTracker wanted;
+        readonly HashSet<PlayerState> hooked = new HashSet<PlayerState>();
+        GameSession session;
         float sirenAt;
+        int strength;
 
         public IReadOnlyList<PoliceOfficer> Officers => officers;
+        /// <summary>The highest wanted level in the session; it sets the size of the response.</summary>
+        public int Strength => strength;
         public int ActiveOfficers
         {
             get
@@ -52,17 +56,19 @@ namespace SmallTown.Crime
 
         void Start()
         {
-            GameSession session = GameSession.Instance;
-            wanted = session.Wanted;
-            wanted.LevelChanged += OnLevelChanged;
-            wanted.CrimeReported += OnCrimeReported;
-            wanted.Escaped += OnEscaped;
+            if (!Net.IsHost)
+            {
+                enabled = false;
+                return;
+            }
+            session = GameSession.Instance;
+            session.PlayerRemoved += OnPlayerRemoved;
             CrimeEvents.Committed += OnCrimeCommitted;
 
             for (int i = 0; i < poolSize; i++)
             {
                 Transform spawn = spawnPoints[i % spawnPoints.Length];
-                PoliceOfficer officer = Instantiate(officerPrefab, spawn.position, spawn.rotation, transform);
+                PoliceOfficer officer = Net.Spawn(officerPrefab, spawn.position, spawn.rotation);
                 officer.name = "Officer " + (i + 1);
                 officer.Setup(this, patrolPoints, spawn.position);
                 officer.Deactivate();
@@ -78,76 +84,156 @@ namespace SmallTown.Crime
 
         void OnDestroy()
         {
-            if (wanted != null)
-            {
-                wanted.LevelChanged -= OnLevelChanged;
-                wanted.CrimeReported -= OnCrimeReported;
-                wanted.Escaped -= OnEscaped;
-            }
+            if (session != null) session.PlayerRemoved -= OnPlayerRemoved;
             CrimeEvents.Committed -= OnCrimeCommitted;
+        }
+
+        void Hook(PlayerState player)
+        {
+            if (!hooked.Add(player)) return;
+            player.Wanted.LevelChanged += level => OnLevelChanged(player, level);
+            player.Wanted.CrimeReported += (level, position) => OnCrimeReported(position);
+            player.Wanted.Escaped += level => Refresh();
+        }
+
+        void OnPlayerRemoved(PlayerState player)
+        {
+            hooked.Remove(player);
+            foreach (PoliceOfficer officer in officers)
+            {
+                if (officer.Focus == player) officer.Focus = null;
+            }
+            Refresh();
         }
 
         void Update()
         {
-            GameSession session = GameSession.Instance;
-            if (session == null || wanted == null) return;
-            PlayerRig rig = session.Rig;
-            Vector3 head = rig.Head.position;
-            Vector3 feet = rig.Motor != null && rig.Mode == MovementMode.HandLocomotion ? rig.Motor.BodyBottom : head + Vector3.down * 0.8f;
-            bool busy = arrest != null && arrest.InProgress;
+            if (session == null) return;
+            IReadOnlyList<PlayerState> players = session.Players;
+            for (int i = 0; i < players.Count; i++) Hook(players[i]);
+            GameBalance balance = session.Balance;
+            float now = Time.time;
 
-            bool seen = false;
             foreach (PoliceOfficer officer in officers)
             {
                 if (officer.State == OfficerState.Inactive) continue;
-                officer.Tick(Time.deltaTime, wanted.IsWanted && !busy, head, feet, wanted.Level);
-                seen |= officer.SeesSuspect;
+                PlayerState suspect = ChooseSuspect(officer, players, balance);
+                officer.Focus = suspect;
+                if (suspect != null)
+                {
+                    officer.Tick(Time.deltaTime, true, suspect.Head, suspect.Feet, suspect.Wanted.Level);
+                }
+                else
+                {
+                    officer.Tick(Time.deltaTime, false, officer.transform.position + Vector3.up * 100f, Vector3.zero, 0);
+                }
             }
-            if (!busy) wanted.Tick(Time.deltaTime, seen, feet);
 
-            if (wanted.Level >= 2 && Time.time >= sirenAt)
+            // Each wanted player escapes on their own clock: it runs only while no officer can see them.
+            for (int i = 0; i < players.Count; i++)
             {
-                sirenAt = Time.time + 1.6f;
-                Vector3 source = patrolCar != null ? patrolCar.transform.position : transform.position;
-                GameFeedback.Play(FeedbackSound.Siren, source, 0.7f);
+                PlayerState player = players[i];
+                if (player.Busy && now >= player.BusyUntil) player.Busy = false;
+                if (!player.Wanted.IsWanted || player.Busy) continue;
+                bool seen = false;
+                foreach (PoliceOfficer officer in officers)
+                {
+                    if (officer.State == OfficerState.Inactive || officer.State == OfficerState.Stunned) continue;
+                    if (officer.CanSee(player.Head, balance))
+                    {
+                        seen = true;
+                        break;
+                    }
+                }
+                player.Wanted.Tick(Time.deltaTime, seen, player.Feet);
             }
+
+            if (strength >= 2 && now >= sirenAt)
+            {
+                sirenAt = now + 1.6f;
+                Vector3 source = patrolCar != null ? patrolCar.transform.position : transform.position;
+                GameFeedback.PlayShared(FeedbackSound.Siren, source, 0.7f);
+            }
+        }
+
+        /// <summary>The wanted player this officer should deal with: one it can see if possible, else the nearest.</summary>
+        PlayerState ChooseSuspect(PoliceOfficer officer, IReadOnlyList<PlayerState> players, GameBalance balance)
+        {
+            PlayerState best = null;
+            float bestScore = float.MaxValue;
+            for (int i = 0; i < players.Count; i++)
+            {
+                PlayerState player = players[i];
+                if (!player.Wanted.IsWanted || player.Busy) continue;
+                float distance = (player.Feet - officer.transform.position).sqrMagnitude;
+                bool visible = officer.State != OfficerState.Stunned && officer.CanSee(player.Head, balance);
+                // Seeing someone always beats merely knowing someone is out there.
+                float score = visible ? distance : distance + 1e6f;
+                // Stick with the current suspect unless another is clearly a better choice.
+                if (player == officer.Focus) score *= 0.6f;
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    best = player;
+                }
+            }
+            return best;
         }
 
         void OnCrimeCommitted(CrimeEvent crime)
         {
             // An officer who sees a crime happen reports it at once.
-            GameSession session = GameSession.Instance;
-            if (session == null || crime.offenderId != session.LocalPlayerId) return;
+            if (session == null || crime.offender == null) return;
             foreach (PoliceOfficer officer in officers)
             {
                 if (officer.State == OfficerState.Inactive || officer.State == OfficerState.Stunned) continue;
                 if (!officer.CanSee(crime.position + Vector3.up * 0.5f, session.Balance)) continue;
-                wanted.ReportCrime(crime.wantedLevel, crime.position);
+                crime.offender.Wanted.ReportCrime(crime.wantedLevel, crime.position);
                 return;
             }
         }
 
-        void OnCrimeReported(int level, Vector3 position)
+        void OnCrimeReported(Vector3 position)
         {
             foreach (PoliceOfficer officer in officers) officer.Investigate(position);
         }
 
-        void OnLevelChanged(int level)
+        void OnLevelChanged(PlayerState player, int level)
         {
-            GameBalance balance = GameSession.Instance.Balance;
-            if (level == 0)
+            if (level > 0)
+            {
+                player.Tell(level == 1 ? "WANTED: a cop is looking for you." : level == 2 ? "WANTED: squad and patrol car inbound!" : "WANTED: every cop in town. Roadblocks are up!");
+            }
+            Refresh(player);
+        }
+
+        /// <summary>Sizes the response to the most wanted player in the session.</summary>
+        void Refresh(PlayerState trigger = null)
+        {
+            int highest = 0;
+            PlayerState mostWanted = null;
+            foreach (PlayerState player in session.Players)
+            {
+                if (player.Wanted.Level > highest)
+                {
+                    highest = player.Wanted.Level;
+                    mostWanted = player;
+                }
+            }
+            bool grew = highest > strength;
+            strength = highest;
+
+            if (highest == 0)
             {
                 foreach (PoliceOfficer officer in officers) officer.GiveUp();
                 if (patrolCar != null) patrolCar.Return();
-                foreach (GameObject block in roadblocks)
-                {
-                    if (block != null) block.SetActive(false);
-                }
+                SetRoadblocks(false);
                 return;
             }
 
-            HudToast.Show(level == 1 ? "WANTED: a cop is looking for you." : level == 2 ? "WANTED: squad and patrol car inbound!" : "WANTED: every cop in town. Roadblocks are up!");
-            int needed = Mathf.Min(officers.Count, balance.OfficersFor(level));
+            GameBalance balance = session.Balance;
+            Vector3 lastKnown = (trigger != null && trigger.Wanted.IsWanted ? trigger : mostWanted).Wanted.LastKnownPosition;
+            int needed = Mathf.Min(officers.Count, balance.OfficersFor(highest));
             int active = ActiveOfficers;
             for (int i = 0; i < officers.Count && active < needed; i++)
             {
@@ -155,34 +241,39 @@ namespace SmallTown.Crime
                 officers[i].Activate(spawnPoints[i % spawnPoints.Length].position);
                 active++;
             }
-            foreach (PoliceOfficer officer in officers) officer.Investigate(wanted.LastKnownPosition);
-
-            if (level >= 2 && patrolCar != null) patrolCar.Dispatch(wanted.LastKnownPosition);
-            if (level >= 3)
+            if (grew || trigger != null)
             {
-                foreach (GameObject block in roadblocks)
-                {
-                    if (block != null) block.SetActive(true);
-                }
+                foreach (PoliceOfficer officer in officers) officer.Investigate(lastKnown);
             }
+
+            if (patrolCar != null)
+            {
+                if (highest >= 2) patrolCar.Dispatch(lastKnown);
+                else patrolCar.Return();
+            }
+            SetRoadblocks(highest >= 3);
         }
 
-        void OnEscaped(int fromLevel)
+        void SetRoadblocks(bool on)
         {
-            foreach (PoliceOfficer officer in officers) officer.GiveUp();
+            foreach (GameObject block in roadblocks)
+            {
+                if (block != null && block.activeSelf != on) block.SetActive(on);
+            }
         }
 
         public void RequestArrest(PoliceOfficer by)
         {
-            if (arrest == null || arrest.InProgress || !wanted.IsWanted) return;
-            arrest.Arrest();
+            PlayerState suspect = by.Focus ?? session.Local;
+            if (arrest == null || suspect.Busy || !suspect.Wanted.IsWanted) return;
+            arrest.Arrest(suspect);
         }
 
         /// <summary>An officer finished walking home after standing down.</summary>
         public void OnOfficerHome(PoliceOfficer officer)
         {
             bool beatCop = officers.Count > 0 && officers[0] == officer;
-            if (beatCop || wanted.IsWanted) officer.StartPatrol();
+            if (beatCop || strength > 0) officer.StartPatrol();
             else officer.Deactivate();
         }
     }

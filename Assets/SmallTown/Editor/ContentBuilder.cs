@@ -50,11 +50,14 @@ namespace SmallTown.EditorTools
 
             HandLocomotionSettings settings = EnsureLocomotionSettings();
             CharacterBuilder.Reset();
+            NetBuilder.Reset();
             AssetDatabase.Refresh();
             CharacterBuilder.BakeParts();
             BuildItemPrefabs();
             BuildPlayerRig(settings);
             MovementTestSceneBuilder.Build();
+            MenuSceneBuilder.Build();
+            // The town builds the shared prefabs, then the NetworkManager that lists them.
             TownSceneBuilder.Build();
             AssetDatabase.SaveAssets();
             Debug.Log("[SmallTown] Prefabs and scenes built.");

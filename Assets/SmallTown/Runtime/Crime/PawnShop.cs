@@ -27,12 +27,13 @@ namespace SmallTown.Crime
 
         void Start()
         {
+            if (!Net.IsHost) return;
             if (payoutLabel != null) payoutLabel.text = "<b>WE BUY ANYTHING</b>\nDrop it on the green tray.";
         }
 
         void Update()
         {
-            if (GameSession.Instance == null || tray == null) return;
+            if (GameSession.Instance == null || tray == null || !Net.IsHost) return;
             scratch.Clear();
             scratch.AddRange(LootItem.All);
             foreach (LootItem loot in scratch)
@@ -51,16 +52,18 @@ namespace SmallTown.Crime
             if (loot == null || loot.isCash || session == null) return 0;
             int price = session.Balance.PawnPrice(loot.value);
             if (!loot.TryMarkPaidOut()) return 0;
-            if (session.Wallet.Apply("sale:" + loot.InstanceId, price) != TransactionResult.Applied) return 0;
+            // Whoever last had it in their hands or bag is the seller.
+            PlayerState seller = session.OwnerOf(loot.Item) ?? session.Actor;
+            if (seller.Wallet.Apply("sale:" + loot.InstanceId, price) != TransactionResult.Applied) return 0;
 
             total += price;
-            GameFeedback.Play(FeedbackSound.Cash, tray.transform.position);
-            HudToast.Show("Sold " + loot.displayName + "  +$" + price);
+            GameFeedback.PlayShared(FeedbackSound.Cash, tray.transform.position);
+            seller.Tell("Sold " + loot.displayName + "  +$" + price);
             if (payoutLabel != null) payoutLabel.text = "<b>SOLD</b>\n" + loot.displayName + "  $" + price + "\nToday: $" + total;
 
             loot.Item.ForceReleaseAll();
             if (session.Bag != null) session.Bag.Remove(loot.Item);
-            Destroy(loot.gameObject);
+            Net.Despawn(loot.gameObject);
             return price;
         }
     }

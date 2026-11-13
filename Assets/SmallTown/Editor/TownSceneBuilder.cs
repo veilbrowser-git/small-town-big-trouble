@@ -7,6 +7,7 @@ using SmallTown.Interaction;
 using SmallTown.Items;
 using SmallTown.Jobs;
 using SmallTown.Locomotion;
+using SmallTown.Networking;
 using SmallTown.Npc;
 using SmallTown.UI;
 using TMPro;
@@ -39,6 +40,10 @@ namespace SmallTown.EditorTools
         [Serializable] class Layout { public int version; public Box[] colliders; public Box[] climbables; public Box[] zones; public Mark[] markers; public Sign[] signs; }
 
         static readonly Dictionary<string, Transform> Markers = new Dictionary<string, Transform>();
+        // Things clients must see exactly as the host has them (see NetSession).
+        static readonly List<TMP_Text> SharedLabels = new List<TMP_Text>();
+        static readonly List<GameObject> SharedToggles = new List<GameObject>();
+        static readonly List<PunchButton> SharedButtons = new List<PunchButton>();
         static readonly Dictionary<string, Box> Zones = new Dictionary<string, Box>();
 
         static Vector3 V(float[] a) => new Vector3(a[0], a[1], a[2]);
@@ -66,6 +71,9 @@ namespace SmallTown.EditorTools
             }
             Markers.Clear();
             Zones.Clear();
+            SharedLabels.Clear();
+            SharedToggles.Clear();
+            SharedButtons.Clear();
             var layout = JsonUtility.FromJson<Layout>(File.ReadAllText(LayoutPath));
             GameBalance balance = ItemBuilder.EnsureBalance();
 
@@ -88,7 +96,8 @@ namespace SmallTown.EditorTools
             var rig = rigObject.GetComponent<PlayerRig>();
             var bag = rigObject.GetComponentInChildren<StorageBag>();
 
-            // --- Session services.
+            // --- Session services. The town always runs inside a session, even solo.
+            new GameObject("NetBootstrap").AddComponent<TownNetBootstrap>();
             var game = new GameObject("Game");
             var session = game.AddComponent<GameSession>();
             session.Configure(balance, rig, bag);
@@ -129,10 +138,24 @@ namespace SmallTown.EditorTools
             BuildApartment();
             BuildWater();
 
+            // --- Networking: the shared noticeboard, the player others see, and the manager.
+            NetBuilder.MakeShared(game, false, false, false);
+            game.AddComponent<NetSession>().Configure(SharedLabels.ToArray(), SharedToggles.ToArray(), SharedButtons.ToArray(), arrest);
+            GameObject networkPlayer = NetBuilder.BuildNetworkPlayer();
+            NetBuilder.BuildNetworkManager(networkPlayer);
+
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
+            // Scene objects only get their network IDs once the scene exists on disk.
+            int shared = NetBuilder.RefreshSceneHashes();
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene, ScenePath);
+            Debug.Log("[SmallTown] Town has " + shared + " shared scene objects, " + SharedLabels.Count + " shared labels, " +
+                      SharedToggles.Count + " shared switches, " + SharedButtons.Count + " shared buttons.");
+
             EditorBuildSettings.scenes = new[]
             {
+                new EditorBuildSettingsScene(MenuSceneBuilder.ScenePath, true),
                 new EditorBuildSettingsScene(ScenePath, true),
                 new EditorBuildSettingsScene(MovementTestSceneBuilder.ScenePath, true),
             };
@@ -328,7 +351,7 @@ namespace SmallTown.EditorTools
         static void BuildPizzaPlace(Pizza pizzaPrefab, Topping[] toppings, GameObject chefPrefab, GameObject[] customerPrefabs)
         {
             var root = new GameObject("PizzaPlace");
-            Npc(chefPrefab, M("PizzaChef"), "Chef").transform.SetParent(root.transform, true);
+            Npc(chefPrefab, M("PizzaChef"), "Chef");
 
             string[] bins = { "Bin_Cheese", "Bin_Pepperoni", "Bin_Mushroom" };
             for (int i = 0; i < bins.Length; i++)
@@ -352,7 +375,6 @@ namespace SmallTown.EditorTools
             for (int i = 0; i < customerMarkers.Length; i++)
             {
                 GameObject npc = Npc(customerPrefabs[i % customerPrefabs.Length], customerMarkers[i], "Customer " + i);
-                npc.transform.SetParent(root.transform, true);
                 BoxZone zone = Zone("DropZone", customerMarkers[i].position + Vector3.up * 0.7f, new Vector3(2f, 1.8f, 2f), npc.transform);
                 GameObject beacon = ContentBuilder.Box("Beacon", npc.transform, new Vector3(0f, 2.3f, 0f), new Vector3(0.14f, 1.6f, 0.14f), beaconMaterial, false);
                 ContentBuilder.Box("BeaconTip", beacon.transform, new Vector3(0f, -0.62f, 0f), new Vector3(3f, 0.16f, 3f), beaconMaterial, false);
@@ -360,6 +382,7 @@ namespace SmallTown.EditorTools
                 customer.placeName = places[i % places.Length];
                 customer.Configure(zone, beacon, npc.GetComponent<NpcBody>());
                 customers[i] = customer;
+                SharedToggles.Add(beacon);
             }
 
             // Order terminal on the wall.
@@ -377,6 +400,9 @@ namespace SmallTown.EditorTools
             PunchButton cancel = MovementTestSceneBuilder.Button(terminal, "CANCEL", new Vector3(0.33f, -0.24f, -0.06f), ButtonMaterial("ButtonRed", "E0453A"));
             UnityEventTools.AddPersistentListener(take.onPressed, job.TakeOrder);
             UnityEventTools.AddPersistentListener(cancel.onPressed, job.CancelOrder);
+            SharedLabels.Add(order);
+            SharedButtons.Add(take);
+            SharedButtons.Add(cancel);
         }
 
         // ------------------------------------------------------------------ Convenience store
@@ -389,7 +415,6 @@ namespace SmallTown.EditorTools
             BoxZone zone = Zone("StoreZone", V(zoneBox.c), V(zoneBox.s), root.transform);
 
             GameObject cashier = Npc(cashierPrefab, M("Cashier"), "Cashier");
-            cashier.transform.SetParent(root.transform, true);
 
             Transform statusMarker = M("StoreStatusSign");
             Transform statusPivot = FacingPivot("StatusSign", statusMarker.position, statusMarker.eulerAngles.y, root.transform);
@@ -398,6 +423,7 @@ namespace SmallTown.EditorTools
 
             var site = root.AddComponent<RobberySite>();
             site.Configure(zone, cashier.GetComponent<NpcBody>(), M("RegisterCash"), M("StoreAlarm"), cash, MarkerSeries("Merch_"), merch, status);
+            SharedLabels.Add(status);
         }
 
         // ------------------------------------------------------------------ Pawn shop
@@ -405,7 +431,7 @@ namespace SmallTown.EditorTools
         static void BuildPawnShop(GameObject game, Pistol pistolPrefab, GameObject brokerPrefab)
         {
             var root = new GameObject("PawnShop");
-            Npc(brokerPrefab, M("PawnBroker"), "Broker").transform.SetParent(root.transform, true);
+            Npc(brokerPrefab, M("PawnBroker"), "Broker");
 
             BoxZone tray = Zone("SellTray", M("PawnSell").position + Vector3.up * 0.2f, new Vector3(0.95f, 0.5f, 0.55f), root.transform);
             Transform signMarker = M("PawnPayoutSign");
@@ -413,6 +439,7 @@ namespace SmallTown.EditorTools
             ContentBuilder.Box("Board", signPivot, new Vector3(0f, 0f, 0.015f), new Vector3(1.3f, 0.5f, 0.03f), ContentBuilder.Mat("GymDark", ContentBuilder.Hex("2B2B33")), false);
             TextMeshPro payout = Text(signPivot, "WE BUY ANYTHING", new Vector3(0f, 0f, -0.006f), new Vector2(1.2f, 0.44f), 0.75f, ContentBuilder.Hex("FFD166"));
             root.AddComponent<PawnShop>().Configure(tray, payout);
+            SharedLabels.Add(payout);
 
             var equipment = game.AddComponent<OwnedEquipment>();
             equipment.Configure(pistolPrefab, M("EquipmentTable"), M("ShopPistol"));
@@ -438,6 +465,7 @@ namespace SmallTown.EditorTools
             Transform buttonPivot = FacingPivot("BuyPivot", new Vector3(marker.position.x, 0.36f, marker.position.z - 0.36f), 180f, card);
             PunchButton buy = MovementTestSceneBuilder.Button(buttonPivot, "BUY", Vector3.zero, ButtonMaterial(materialName, hex));
             UnityEventTools.AddPersistentListener(buy.onPressed, offer.BuyPressed);
+            SharedButtons.Add(buy);
             return offer;
         }
 
@@ -472,6 +500,9 @@ namespace SmallTown.EditorTools
                 ContentBuilder.UnlitMaterial("SirenBlue", ContentBuilder.Hex("4D7BFF"), false), false, GameLayers.Vehicle).GetComponent<Renderer>();
             var patrolCar = car.AddComponent<PatrolCar>();
             patrolCar.Configure(lights);
+            NetBuilder.MakeShared(car, true, false, false);
+            SharedToggles.Add(lights[0].gameObject);
+            SharedToggles.Add(lights[1].gameObject);
 
             // Roadblocks: hidden until wanted level 3.
             var blocks = new List<GameObject>();
@@ -496,6 +527,7 @@ namespace SmallTown.EditorTools
                 collider.center = new Vector3(0f, 0.4f, 0f);
                 collider.size = new Vector3(5f, 0.8f, 0.4f);
                 blocks.Add(block);
+                SharedToggles.Add(block);
             }
 
             var dispatcher = game.AddComponent<PoliceDispatcher>();
@@ -541,8 +573,15 @@ namespace SmallTown.EditorTools
             PunchButton gym = MovementTestSceneBuilder.Button(gymPivot, "GYM", Vector3.zero, ButtonMaterial("ButtonBlue", "3F6FB5"));
             var loader = gym.gameObject.AddComponent<SceneLoadButton>();
             loader.sceneName = "MovementTest";
+            loader.soloOnly = true;
             UnityEventTools.AddPersistentListener(gym.onPressed, loader.Load);
             Text(gymPivot, "Movement lessons", new Vector3(0f, 0.24f, -0.01f), new Vector2(0.7f, 0.12f), 0.5f, Color.white);
+
+            PunchButton menu = MovementTestSceneBuilder.Button(gymPivot, "MENU", new Vector3(0.7f, 0f, 0f), ButtonMaterial("ButtonRed", "E0453A"));
+            var leave = menu.gameObject.AddComponent<SceneLoadButton>();
+            leave.sceneName = "Menu";
+            UnityEventTools.AddPersistentListener(menu.onPressed, leave.Load);
+            Text(gymPivot, "Leave game", new Vector3(0.7f, 0.24f, -0.01f), new Vector2(0.7f, 0.12f), 0.5f, Color.white);
         }
 
         static void BuildWater()

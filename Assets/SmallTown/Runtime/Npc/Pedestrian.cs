@@ -39,6 +39,7 @@ namespace SmallTown.Npc
 
         void OnEnable()
         {
+            if (!Net.IsHost) return;
             CrimeEvents.Committed += OnCrime;
             pointIndex = Random.Range(0, Mathf.Max(1, wanderPoints.Length));
         }
@@ -54,10 +55,9 @@ namespace SmallTown.Npc
             Witness(crime);
         }
 
-        public void OnShot(Vector3 point, Vector3 direction)
+        public void OnShot(Vector3 point, Vector3 direction, PlayerState shooter)
         {
-            Witness(new CrimeEvent { kind = CrimeKind.Gunfire, position = point, wantedLevel = 2,
-                offenderId = GameSession.Instance != null ? GameSession.Instance.LocalPlayerId : "" });
+            Witness(new CrimeEvent { kind = CrimeKind.Gunfire, position = point, wantedLevel = 2, offender = shooter });
         }
 
         void Witness(CrimeEvent crime)
@@ -85,10 +85,10 @@ namespace SmallTown.Npc
             if (reportAt >= 0f && Time.time >= reportAt && session != null)
             {
                 reportAt = -1f;
-                if (pending.offenderId == session.LocalPlayerId)
+                if (pending.offender != null)
                 {
-                    session.Wanted.ReportCrime(pending.wantedLevel, pending.position);
-                    HudToast.Show("A witness called the police!");
+                    pending.offender.Wanted.ReportCrime(pending.wantedLevel, pending.position);
+                    pending.offender.Tell("A witness called the police!");
                 }
             }
 

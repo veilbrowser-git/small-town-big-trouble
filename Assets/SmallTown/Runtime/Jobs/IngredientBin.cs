@@ -23,7 +23,7 @@ namespace SmallTown.Jobs
 
         void Update()
         {
-            if (prefab == null) return;
+            if (prefab == null || !Net.IsHost) return;
             bool taken = current == null || (current.transform.position - transform.position).sqrMagnitude > 0.2f * 0.2f;
             if (!taken)
             {
@@ -35,16 +35,16 @@ namespace SmallTown.Jobs
 
         public Topping Spawn()
         {
-            if (prefab == null) return null;
+            if (prefab == null || !Net.IsHost) return null;
             spawned.RemoveAll(t => t == null);
             while (spawned.Count >= maxLoose)
             {
                 Topping oldest = spawned[0];
                 spawned.RemoveAt(0);
                 var item = oldest.GetComponent<GrabbableItem>();
-                if (item.State == ItemState.Free) Destroy(oldest.gameObject);
+                if (item.State == ItemState.Free) Net.Despawn(oldest.gameObject);
             }
-            current = Instantiate(prefab, transform.position, transform.rotation);
+            current = Net.Spawn(prefab, transform.position, transform.rotation);
             spawned.Add(current);
             respawnAt = Time.time + respawnSeconds;
             return current;

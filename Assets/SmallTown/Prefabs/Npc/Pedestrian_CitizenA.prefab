@@ -463,6 +463,9 @@ GameObject:
   - component: {fileID: 3708055124654247115}
   - component: {fileID: 4151108673238894454}
   - component: {fileID: 6510790838243759441}
+  - component: {fileID: 8182610236089527778}
+  - component: {fileID: 1551499164746312158}
+  - component: {fileID: 9148782666110044957}
   m_Layer: 11
   m_Name: Pedestrian_CitizenA
   m_TagString: Untagged
@@ -583,6 +586,62 @@ MonoBehaviour:
   noticeRange: 14
   walkSpeed: 1.1
   fleeSpeed: 3
+--- !u!114 &8182610236089527778
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6976303956361542171}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  GlobalObjectIdHash: 0
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  m_InScenePlacedDisabledByDefault: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  m_InScenePlaced: 0
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 1
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
+--- !u!114 &1551499164746312158
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6976303956361542171}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dc06da7936568429c80b162026352dcc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: SmallTown.Runtime::SmallTown.Networking.NetPose
+  ShowTopMostFoldoutHeaderGroup: 1
+  managePhysics: 0
+  smoothing: 18
+  snapDistance: 2.5
+--- !u!114 &9148782666110044957
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6976303956361542171}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33dfc67b09c8242c2b08ffe91ad384bc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: SmallTown.Runtime::SmallTown.Networking.NetNpc
+  ShowTopMostFoldoutHeaderGroup: 1
 --- !u!1 &7742594100396128206
 GameObject:
   m_ObjectHideFlags: 0

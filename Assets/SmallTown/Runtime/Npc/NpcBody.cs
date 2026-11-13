@@ -40,6 +40,31 @@ namespace SmallTown.Npc
         readonly Vector3[] handLocal = new Vector3[2];
         bool poseSet;
 
+        Renderer[] renderers;
+        Collider[] bodyColliders;
+
+        /// <summary>False while the character is off duty: invisible and untouchable, but still in the scene.</summary>
+        public bool Present { get; private set; } = true;
+
+        public void SetPresent(bool present)
+        {
+            if (Present == present && renderers != null) return;
+            Present = present;
+            if (renderers == null)
+            {
+                renderers = GetComponentsInChildren<Renderer>(true);
+                bodyColliders = GetComponentsInChildren<Collider>(true);
+            }
+            foreach (Renderer r in renderers)
+            {
+                if (r != null) r.enabled = present;
+            }
+            foreach (Collider c in bodyColliders)
+            {
+                if (c != null) c.enabled = present;
+            }
+        }
+
         public Vector3 EyePosition => transform.position + Vector3.up * eyeHeight;
         public Transform Head => head;
 

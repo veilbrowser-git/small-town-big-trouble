@@ -1,6 +1,7 @@
 #!/bin/zsh
 # Headless verification: compile, configure the project, rebuild generated content, run all tests.
-# Usage: ./run_checks.sh [setup|tests|all|build]
+# Usage: ./run_checks.sh [setup|tests|all|build|mac]
+#   mac builds the desktop player used by Tools/coop_check.py
 set -u
 cd "$(dirname "$0")"
 UNITY="${UNITY:-/Applications/Unity/Hub/Editor/6000.6.8f1/Unity.app/Contents/MacOS/Unity}"
@@ -24,4 +25,9 @@ fi
 if [[ "$MODE" == "build" ]]; then
   "$UNITY" -batchmode -quit -buildTarget Android -projectPath "$PWD" -executeMethod SmallTown.EditorTools.BuildScript.BuildAndroidDevelopment -logFile Logs/build-android.log
   echo "android build exit=$?"
+fi
+
+if [[ "$MODE" == "mac" ]]; then
+  "$UNITY" -batchmode -quit -buildTarget StandaloneOSX -projectPath "$PWD" -executeMethod SmallTown.EditorTools.BuildScript.BuildMacDevelopment -logFile Logs/build-mac.log
+  echo "mac build exit=$?"
 fi

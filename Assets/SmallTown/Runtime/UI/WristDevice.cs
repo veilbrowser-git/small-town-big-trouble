@@ -43,27 +43,27 @@ namespace SmallTown.UI
             if (session == null || session.Wallet == null)
             {
                 if (moneyLabel != null) moneyLabel.text = "";
-                if (objectiveLabel != null) objectiveLabel.text = "Movement gym";
+                if (objectiveLabel != null) objectiveLabel.text = "";
                 SetPips(0, 0f);
                 return;
             }
 
-            if (moneyLabel != null) moneyLabel.text = "$" + session.Wallet.Cash;
+            HudView view = session.View;
+            if (moneyLabel != null) moneyLabel.text = "$" + view.cash;
             if (objectiveLabel != null)
             {
-                Job job = JobManager.Instance != null ? JobManager.Instance.Active : null;
-                if (session.Wanted.IsWanted)
+                if (view.wantedLevel > 0)
                 {
-                    objectiveLabel.text = session.Wanted.SeenByPolice
+                    objectiveLabel.text = view.seenByPolice
                         ? "WANTED: break line of sight"
-                        : "Hiding... " + Mathf.CeilToInt((1f - session.Wanted.EscapeProgress) * session.Balance.escapeSeconds) + "s";
+                        : "Hiding... " + Mathf.CeilToInt((1f - view.escapeProgress) * session.Balance.escapeSeconds) + "s";
                 }
                 else
                 {
-                    objectiveLabel.text = job != null ? job.Objective : "No job. Try the pizza place.";
+                    objectiveLabel.text = string.IsNullOrEmpty(view.objective) ? "No job. Try the pizza place." : view.objective;
                 }
             }
-            SetPips(session.Wanted.Level, session.Wanted.EscapeProgress);
+            SetPips(view.wantedLevel, view.escapeProgress);
 
             if (statusLabel != null)
             {

@@ -189,16 +189,31 @@ namespace SmallTown.Tests
             yield return new WaitForSeconds(0.5f);
             Assert.That(site.Stock.Count, Is.GreaterThan(10), "Shelves are stocked.");
             Assert.That(site.StartHoldUp(), Is.True);
-            yield return new WaitForSeconds(9.5f);
-            int bundles = 0;
-            foreach (var loot in SmallTown.Items.LootItem.All)
+            // Watch the next few seconds and keep the peaks: a nearby officer may well
+            // arrest the robber before the end, which is the game working.
+            var patrolCar = Object.FindAnyObjectByType<SmallTown.Crime.PatrolCar>();
+            int peakBundles = 0, peakWanted = 0, peakOfficers = 0;
+            bool carResponded = false;
+            float until = Time.time + 9.5f;
+            while (Time.time < until)
             {
-                if (loot.isCash) bundles++;
+                int bundles = 0;
+                foreach (var loot in SmallTown.Items.LootItem.All)
+                {
+                    if (loot.isCash) bundles++;
+                }
+                peakBundles = Mathf.Max(peakBundles, bundles);
+                peakWanted = Mathf.Max(peakWanted, session.Wanted.Level);
+                peakOfficers = Mathf.Max(peakOfficers, dispatcher.ActiveOfficers);
+                carResponded |= patrolCar.Responding;
+                yield return null;
             }
-            Assert.That(bundles, Is.EqualTo(session.Balance.registerBundles));
-            Assert.That(session.Wanted.Level, Is.GreaterThanOrEqualTo(2));
-            Assert.That(dispatcher.ActiveOfficers, Is.GreaterThanOrEqualTo(3), "The alarm brings a squad.");
-            Assert.That(Object.FindAnyObjectByType<SmallTown.Crime.PatrolCar>().Responding, Is.True, "The patrol car rolls at level 2.");
+            string history = string.Join(" / ", HudToast.History);
+            Assert.That(peakBundles, Is.EqualTo(session.Balance.registerBundles), history);
+            Assert.That(peakWanted, Is.GreaterThanOrEqualTo(2), "The alarm makes the robber wanted. Messages: " + history);
+            Assert.That(peakOfficers, Is.GreaterThanOrEqualTo(3), "The alarm brings a squad.");
+            Assert.That(carResponded, Is.True, "The patrol car rolls at level 2.");
+            Debug.Log("[SmallTown] Town test messages: " + history);
             Capture(rig, "Logs/town-robbery.png");
         }
 

@@ -42,7 +42,10 @@ namespace SmallTown.Interaction
             get
             {
                 int used = 0;
-                foreach (var item in items) used += item.storageSize;
+                foreach (var item in items)
+                {
+                    if (item != null) used += item.storageSize;
+                }
                 return used;
             }
         }
@@ -66,10 +69,20 @@ namespace SmallTown.Interaction
             if (rig != null) rig.Simulated -= Follow;
         }
 
+        /// <summary>Network client ID of the player wearing this bag (0 when offline).</summary>
+        public ulong OwnerId => Net.LocalClientId;
+
         void Follow(float deltaTime)
         {
             Transform head = rig.Head;
             if (head == null) return;
+            // Items the host removed from the game (sold, confiscated) simply vanish from the bag.
+            if (items.RemoveAll(i => i == null) > 0)
+            {
+                LayoutItems();
+                RefreshLabel();
+                Changed?.Invoke(this);
+            }
 
             float headYaw = rig.BodyYaw.eulerAngles.y;
             if (!yawSet)
@@ -107,7 +120,7 @@ namespace SmallTown.Interaction
             }
 
             Transform slot = slotRoot != null ? slotRoot : transform;
-            item.EnterStorage(slot, storedItemSize);
+            item.EnterStorage(slot, storedItemSize, OwnerId);
             items.Add(item);
             LayoutItems();
 
@@ -157,8 +170,8 @@ namespace SmallTown.Interaction
             for (int i = 0; i < items.Count; i++)
             {
                 float angle = i * Mathf.PI * 2f / Mathf.Max(1, capacity);
-                items[i].transform.localPosition = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * 0.045f;
-                items[i].transform.localRotation = Quaternion.identity;
+                if (items[i] == null) continue;
+                items[i].StorageOffset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * 0.045f;
             }
         }
 

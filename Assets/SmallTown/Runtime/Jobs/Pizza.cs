@@ -21,9 +21,19 @@ namespace SmallTown.Jobs
         [SerializeField] GameObject toppingChipPrefab;
 
         readonly List<string> toppings = new List<string>();
+        readonly List<Color> toppingColours = new List<Color>();
+        int shownChips;
 
         /// <summary>Toppings this order needs. Anything else is refused.</summary>
         public readonly List<string> Required = new List<string>();
+
+        /// <summary>
+        /// Set by the network layer. On a client it asks the host to add the topping
+        /// and returns true; the host's answer arrives through <see cref="ApplyRemote"/>.
+        /// </summary>
+        public System.Func<Topping, bool> ToppingRelay;
+        /// <summary>Raised on the host whenever toppings, cooked or boxed change.</summary>
+        public event System.Action<Pizza> Changed;
 
         public bool Cooked { get; private set; }
         public bool Boxed { get; private set; }
@@ -69,20 +79,24 @@ namespace SmallTown.Jobs
         public bool TryAdd(Topping topping)
         {
             if (topping == null || Cooked || Boxed) return false;
+            if (ToppingRelay != null && ToppingRelay(topping)) return false;
             if (!Required.Contains(topping.toppingId) || toppings.Contains(topping.toppingId)) return false;
 
             toppings.Add(topping.toppingId);
+            toppingColours.Add(topping.colour);
             AddChips(topping.colour, toppings.Count);
-            GameFeedback.Play(FeedbackSound.Store, transform.position, 0.7f, 1.2f);
+            GameFeedback.PlayShared(FeedbackSound.Store, transform.position, 0.7f, 1.2f);
 
             var item = topping.GetComponent<GrabbableItem>();
             item.ForceReleaseAll();
-            Destroy(topping.gameObject);
+            Net.Despawn(topping.gameObject);
+            Changed?.Invoke(this);
             return true;
         }
 
         void AddChips(Color colour, int ring)
         {
+            shownChips = Mathf.Max(shownChips, ring);
             if (toppingRoot == null || toppingChipPrefab == null) return;
             var block = new MaterialPropertyBlock();
             block.SetColor("_BaseColor", colour);
@@ -99,15 +113,27 @@ namespace SmallTown.Jobs
             }
         }
 
+        public IReadOnlyList<Color> ToppingColours => toppingColours;
+
+        /// <summary>Clients: show what the host says this pizza looks like now.</summary>
+        public void ApplyRemote(IReadOnlyList<Color> colours, bool cooked, bool boxed)
+        {
+            for (int i = shownChips; i < colours.Count; i++) AddChips(colours[i], i + 1);
+            if (cooked && !Cooked) SetCooked();
+            if (boxed && !Boxed) SetBoxed();
+        }
+
         public void SetCooked()
         {
             Cooked = true;
+            Changed?.Invoke(this);
             if (doughRenderer != null && cookedMaterial != null) doughRenderer.sharedMaterial = cookedMaterial;
         }
 
         public void SetBoxed()
         {
             Boxed = true;
+            Changed?.Invoke(this);
             if (openVisual != null) openVisual.SetActive(false);
             if (boxVisual != null) boxVisual.SetActive(true);
             Item.storageSize = 2;
