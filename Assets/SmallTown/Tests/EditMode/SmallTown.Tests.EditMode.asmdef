@@ -1,0 +1,21 @@
+{
+  "name": "SmallTown.Tests.EditMode",
+  "rootNamespace": "SmallTown.Tests",
+  "references": [
+    "SmallTown.Runtime",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner",
+    "Unity.TextMeshPro"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ]
+}

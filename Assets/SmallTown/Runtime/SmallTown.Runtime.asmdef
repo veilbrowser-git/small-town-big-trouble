@@ -1,0 +1,15 @@
+{
+  "name": "SmallTown.Runtime",
+  "rootNamespace": "SmallTown",
+  "references": [
+    "Unity.InputSystem",
+    "Unity.XR.CoreUtils",
+    "Unity.XR.Interaction.Toolkit",
+    "Unity.TextMeshPro",
+    "Unity.AI.Navigation"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": true
+}

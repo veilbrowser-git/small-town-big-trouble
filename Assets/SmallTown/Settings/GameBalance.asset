@@ -1,0 +1,68 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fd7e79b71dab749cab29d7f942f3a086, type: 3}
+  m_Name: GameBalance
+  m_EditorClassIdentifier: SmallTown.Runtime::SmallTown.Economy.GameBalance
+  startingMoney: 20
+  pizzaPayout: 60
+  pizzaSpeedTip: 25
+  pizzaTipSeconds: 120
+  pizzaCookSeconds: 5
+  pistolPrice: 110
+  satchelPrice: 180
+  baseSatchelCapacity: 4
+  bigSatchelCapacity: 8
+  registerBundles: 5
+  bundleValue: 45
+  firstBundleDelay: 2
+  bundleInterval: 1.4
+  alarmDelay: 7
+  robberyCooldown: 150
+  maxHoldUpSeconds: 40
+  holdUpAimSeconds: 0.8
+  holdUpRange: 5
+  merchandise:
+  - id: snack
+    displayName: Paw Puffs
+    value: 12
+    colour: {r: 0.96, g: 0.77, b: 0.19, a: 1}
+    size: {x: 0.12, y: 0.16, z: 0.08}
+  - id: soda
+    displayName: Fizz Soda
+    value: 9
+    colour: {r: 0.88, g: 0.27, b: 0.23, a: 1}
+    size: {x: 0.08, y: 0.16, z: 0.08}
+  - id: gadget
+    displayName: Pocket Radio
+    value: 38
+    colour: {r: 0.25, g: 0.44, b: 0.71, a: 1}
+    size: {x: 0.16, y: 0.1, z: 0.06}
+  pawnRate: 0.6
+  escapeSeconds: 20
+  escalateSeconds: 35
+  officersPerLevel: 01000000010000000300000005000000i
+  sightRange: 22
+  sightAngle: 150
+  alwaysNoticeRange: 3
+  arrestRange: 1
+  arrestSeconds: 1.2
+  searchSeconds: 18
+  officerPatrolSpeed: 1.4
+  officerChaseSpeed:
+  - 2.4
+  - 2.4
+  - 2.9
+  - 3.3
+  witnessReportDelay: 3
+  stunSeconds: 4
+  fineBase: 30
+  finePerLevel: 30

@@ -1,0 +1,22 @@
+{
+  "name": "SmallTown.Tests.PlayMode",
+  "rootNamespace": "SmallTown.Tests",
+  "references": [
+    "SmallTown.Runtime",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner",
+    "Unity.InputSystem",
+    "Unity.TextMeshPro",
+    "Unity.InputSystem.TestFramework",
+    "Unity.AI.Navigation"
+  ],
+  "includePlatforms": [],
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ]
+}
