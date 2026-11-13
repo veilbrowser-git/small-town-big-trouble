@@ -49,6 +49,7 @@ namespace SmallTown.Crime
 
         void FixedUpdate()
         {
+            if (!Net.IsHost) return;
             Vector3 position = body.position;
             float delta = targetX - position.x;
             if (Mathf.Abs(delta) > 0.02f)
@@ -65,11 +66,11 @@ namespace SmallTown.Crime
 
         void Update()
         {
-            if (!responding)
-            {
-                SetLights(false);
-                return;
-            }
+            // The light bar is switched on and off as an object so its state can be
+            // copied to other players; the flashing itself runs on every machine.
+            bool on = lights.Length > 0 && lights[0] != null && lights[0].gameObject.activeSelf;
+            if (Net.IsHost && on != responding) SetLights(responding);
+            if (!on) return;
             bool phase = Mathf.Repeat(Time.time * 3f, 1f) < 0.5f;
             for (int i = 0; i < lights.Length; i++)
             {
@@ -81,7 +82,7 @@ namespace SmallTown.Crime
         {
             foreach (Renderer light in lights)
             {
-                if (light != null) light.enabled = on;
+                if (light != null) light.gameObject.SetActive(on);
             }
         }
     }

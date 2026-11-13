@@ -41,6 +41,32 @@ namespace SmallTown.EditorTools
             if (summary.result != BuildResult.Succeeded) Fail("Android build failed.");
         }
 
+        public const string MacOutput = "Builds/Mac/SmallTownBigTrouble.app";
+
+        /// <summary>
+        /// A desktop development build. Its main use is automated co-op checks:
+        /// several copies run headless on one machine as host and clients.
+        /// </summary>
+        [MenuItem("Small Town/Build/macOS Development Build (for co-op checks)")]
+        public static void BuildMacDevelopment()
+        {
+            string[] scenes = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToArray();
+            System.IO.Directory.CreateDirectory("Builds/Mac");
+            var options = new BuildPlayerOptions
+            {
+                scenes = scenes,
+                locationPathName = MacOutput,
+                target = BuildTarget.StandaloneOSX,
+                targetGroup = BuildTargetGroup.Standalone,
+                options = BuildOptions.Development,
+            };
+            BuildReport report = BuildPipeline.BuildPlayer(options);
+            BuildSummary summary = report.summary;
+            Debug.Log("[SmallTown] macOS build " + summary.result + ": " + summary.outputPath + " (" + summary.totalErrors + " errors, " +
+                      summary.totalTime.TotalSeconds.ToString("0") + " s)");
+            if (summary.result != BuildResult.Succeeded) Fail("macOS build failed.");
+        }
+
         static void Fail(string message)
         {
             Debug.LogError("[SmallTown] " + message);

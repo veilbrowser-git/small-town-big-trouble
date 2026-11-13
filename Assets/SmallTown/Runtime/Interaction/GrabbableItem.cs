@@ -11,6 +11,30 @@ namespace SmallTown.Interaction
         Stored,
     }
 
+    public enum GrabDecision
+    {
+        /// <summary>Take it now.</summary>
+        Grant,
+        Deny,
+        /// <summary>The host has been asked; the grab completes (or not) when it answers.</summary>
+        Pending,
+    }
+
+    /// <summary>
+    /// Decides who may hold a shared item. Offline there is none and every grab is
+    /// granted. In co-op the networked item implements this and asks the host, so
+    /// two players grabbing at once always resolves to exactly one holder.
+    /// </summary>
+    public interface IGrabAuthority
+    {
+        bool CanGrab(HandGrabber grabber);
+        GrabDecision RequestGrab(HandGrabber grabber);
+        void OnGrabbed(HandGrabber grabber);
+        void OnReleased();
+        void OnStored();
+        void OnTakenFromStorage();
+    }
+
     /// <summary>
     /// A physical object that hands can pick up.
     ///
@@ -70,6 +94,21 @@ namespace SmallTown.Interaction
         MaterialPropertyBlock highlightBlock;
         bool highlighted;
 
+        /// <summary>Value of <see cref="HolderId"/> when nobody has the item.</summary>
+        public const ulong NoHolder = ulong.MaxValue;
+
+        Transform storageSlot;
+        bool hiddenRemotely;
+
+        /// <summary>Network authority for this item, if it is a shared object.</summary>
+        public IGrabAuthority Authority { get; set; }
+        /// <summary>Client ID of the player holding or storing this item, or <see cref="NoHolder"/>.</summary>
+        public ulong HolderId { get; private set; } = NoHolder;
+        /// <summary>The last player to have had it. Decides who is paid for a sale and who is blamed for a theft.</summary>
+        public ulong LastHolderId { get; private set; } = NoHolder;
+        /// <summary>Where the item sits inside its container, relative to the container's slot.</summary>
+        public Vector3 StorageOffset { get; set; }
+
         public event Action<GrabbableItem, HandGrabber> Grabbed;
         public event Action<GrabbableItem, HandGrabber> Released;
         public event Action<GrabbableItem> StateChanged;
@@ -102,6 +141,9 @@ namespace SmallTown.Interaction
         public virtual bool CanGrab(HandGrabber grabber)
         {
             if (!isActiveAndEnabled || State == ItemState.Stored || IsHeldBy(grabber)) return false;
+            if (Authority != null && !Authority.CanGrab(grabber)) return false;
+            // Held by another player (their hands are not on this machine): hands off.
+            if (holders.Count == 0 && State == ItemState.Held) return false;
             if (holders.Count == 0) return true;
             if (heavy) return holders.Count < 2;
             // Light item already in a hand: only that same player's other hand may take it.
@@ -148,6 +190,8 @@ namespace SmallTown.Interaction
                 body.maxAngularVelocity = 50f;
                 if (heavy) body.angularDamping = Mathf.Max(freeAngularDamping, 4f);
                 body.WakeUp();
+                HolderId = grabber.OwnerId;
+                LastHolderId = HolderId;
                 SetState(ItemState.Held);
             }
             Grabbed?.Invoke(this, grabber);
@@ -172,7 +216,12 @@ namespace SmallTown.Interaction
                     body.angularVelocity = angularVelocity;
                 }
                 restoreLayerAt = Time.time + LayerRestoreDelay;
-                if (State == ItemState.Held) SetState(ItemState.Free);
+                if (State == ItemState.Held)
+                {
+                    HolderId = NoHolder;
+                    SetState(ItemState.Free);
+                    Authority?.OnReleased();
+                }
             }
             Released?.Invoke(this, grabber);
         }
@@ -189,9 +238,11 @@ namespace SmallTown.Interaction
         // ------------------------------------------------------------------ Storage
 
         /// <summary>Puts the item inside a container: no physics, parented to the slot, shrunk to fit.</summary>
-        public void EnterStorage(Transform slot, float fitSize)
+        public void EnterStorage(Transform slot, float fitSize, ulong ownerId = 0)
         {
             ForceReleaseAll();
+            HolderId = ownerId;
+            LastHolderId = ownerId;
             restoreLayerAt = -1f;
             GameLayers.SetLayerRecursively(gameObject, freeLayer);
             body.isKinematic = true;
@@ -206,16 +257,20 @@ namespace SmallTown.Interaction
             {
                 if (r != null) largest = Mathf.Max(largest, r.bounds.size.magnitude);
             }
-            transform.SetParent(slot, true);
-            transform.localPosition = Vector3.zero;
-            transform.localRotation = Quaternion.identity;
+            // Follow the slot rather than parent to it: shared items must stay at the scene
+            // root for the network layer, and following works the same offline.
+            storageSlot = slot;
+            StorageOffset = Vector3.zero;
+            transform.SetPositionAndRotation(slot.position, slot.rotation);
             if (largest > fitSize) transform.localScale = storedScale * (fitSize / largest);
             SetState(ItemState.Stored);
+            Authority?.OnStored();
         }
 
         public void ExitStorage(Vector3 position, Quaternion rotation)
         {
-            transform.SetParent(null, true);
+            storageSlot = null;
+            HolderId = NoHolder;
             transform.localScale = storedScale;
             transform.SetPositionAndRotation(position, rotation);
             foreach (var c in colliders)
@@ -228,6 +283,43 @@ namespace SmallTown.Interaction
             body.linearVelocity = Vector3.zero;
             body.angularVelocity = Vector3.zero;
             SetState(ItemState.Free);
+            Authority?.OnTakenFromStorage();
+        }
+
+        void LateUpdate()
+        {
+            if (State == ItemState.Stored && storageSlot != null)
+            {
+                transform.SetPositionAndRotation(storageSlot.TransformPoint(StorageOffset), storageSlot.rotation);
+            }
+        }
+
+        /// <summary>
+        /// Mirrors what another machine did with this item: who has it and whether
+        /// it is free, in a hand or in a bag. Used only for items this machine does
+        /// not control. Items in someone else's bag are hidden.
+        /// </summary>
+        public void SetRemoteState(ItemState state, ulong holderId)
+        {
+            if (holders.Count > 0 && state != ItemState.Held) ForceReleaseAll();
+            HolderId = holderId;
+            if (holderId != NoHolder) LastHolderId = holderId;
+            storageSlot = null;
+
+            bool hide = state == ItemState.Stored;
+            if (hide != hiddenRemotely)
+            {
+                hiddenRemotely = hide;
+                foreach (var r in renderers)
+                {
+                    if (r != null) r.enabled = !hide;
+                }
+                foreach (var c in colliders)
+                {
+                    if (c != null) c.enabled = !hide;
+                }
+            }
+            SetState(state);
         }
 
         void SetState(ItemState state)

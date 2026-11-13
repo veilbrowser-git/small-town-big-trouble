@@ -32,6 +32,7 @@ namespace SmallTown.Jobs
         public bool Accept()
         {
             JobManager manager = JobManager.Instance;
+            if (!Net.IsHost) return false;
             if (State != JobState.Available || manager == null || manager.Active != null) return false;
             RunId = Guid.NewGuid().ToString("N");
             State = JobState.Active;
@@ -47,7 +48,7 @@ namespace SmallTown.Jobs
             if (State != JobState.Active) return;
             OnCleanup();
             Finish();
-            HudToast.Show(displayName + " cancelled.");
+            Announce(displayName + " cancelled.");
         }
 
         /// <summary>Pays the reward and ends the run. Safe to call more than once: only the first pays.</summary>
@@ -55,19 +56,34 @@ namespace SmallTown.Jobs
         {
             if (State != JobState.Active) return false;
             GameSession session = GameSession.Instance;
-            TransactionResult result = session != null
-                ? session.Wallet.Apply("job:" + jobId + ":" + RunId, payout)
-                : TransactionResult.Invalid;
-            if (result == TransactionResult.Applied)
+            bool paid = false;
+            if (session != null)
             {
-                session.Wallet.Profile.jobsCompleted++;
+                // Co-op: a job is a team effort, so everyone in the session is paid in full.
+                // The run ID keys the transaction, so each wallet can only be paid once.
+                foreach (PlayerState player in session.Players)
+                {
+                    if (player.Wallet.Apply("job:" + jobId + ":" + RunId, payout) != TransactionResult.Applied) continue;
+                    player.Wallet.Profile.jobsCompleted++;
+                    player.Tell(message + "  +$" + payout);
+                    paid = true;
+                }
+            }
+            if (paid)
+            {
                 CompletedRuns++;
-                GameFeedback.Play(FeedbackSound.Success, transform.position);
-                HudToast.Show(message + "  +$" + payout);
+                GameFeedback.PlayShared(FeedbackSound.Success, transform.position);
             }
             OnCleanup();
             Finish();
-            return result == TransactionResult.Applied;
+            return paid;
+        }
+
+        /// <summary>Shows a message to every player in the session.</summary>
+        protected static void Announce(string message)
+        {
+            if (GameSession.Instance != null) GameSession.Instance.TellAll(message);
+            else HudToast.Show(message);
         }
 
         protected void SetObjective(string objective)

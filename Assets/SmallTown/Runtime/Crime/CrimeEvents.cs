@@ -15,8 +15,8 @@ namespace SmallTown.Crime
     {
         public CrimeKind kind;
         public Vector3 position;
-        /// <summary>Profile ID of the player who did it. Only that player can become wanted for it.</summary>
-        public string offenderId;
+        /// <summary>The player who did it. Only that player can become wanted for it.</summary>
+        public PlayerState offender;
         public int wantedLevel;
     }
 
@@ -28,15 +28,16 @@ namespace SmallTown.Crime
     {
         public static event Action<CrimeEvent> Committed;
 
-        public static void Raise(CrimeKind kind, Vector3 position, int wantedLevel)
+        public static void Raise(CrimeKind kind, Vector3 position, int wantedLevel, PlayerState offender = null)
         {
             var session = GameSession.Instance;
+            if (offender == null && session != null) offender = session.Actor;
             Committed?.Invoke(new CrimeEvent
             {
                 kind = kind,
                 position = position,
                 wantedLevel = wantedLevel,
-                offenderId = session != null ? session.LocalPlayerId : "",
+                offender = offender,
             });
         }
 
@@ -47,6 +48,6 @@ namespace SmallTown.Crime
     /// <summary>Anything a bullet can affect.</summary>
     public interface IShootable
     {
-        void OnShot(Vector3 point, Vector3 direction);
+        void OnShot(Vector3 point, Vector3 direction, PlayerState shooter);
     }
 }

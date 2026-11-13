@@ -42,7 +42,18 @@ namespace SmallTown
         static void ResetStatics()
         {
             instance = null;
+            SharedRelay = null;
             PlayCounts.Clear();
+        }
+
+        /// <summary>Set by the network layer on the host: forwards a world sound to every other player.</summary>
+        public static System.Action<FeedbackSound, Vector3, float, float> SharedRelay;
+
+        /// <summary>Plays a sound that everyone in the session should hear (alarms, cash, sirens).</summary>
+        public static void PlayShared(FeedbackSound sound, Vector3 position, float volume = 1f, float pitch = 1f)
+        {
+            Play(sound, position, volume, pitch);
+            SharedRelay?.Invoke(sound, position, volume, pitch);
         }
 
         public static void Play(FeedbackSound sound, Vector3 position, float volume = 1f, float pitch = 1f)

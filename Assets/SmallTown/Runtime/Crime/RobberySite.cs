@@ -29,10 +29,16 @@ namespace SmallTown.Crime
         [SerializeField] TMP_Text statusLabel;
 
         readonly List<LootItem> stock = new List<LootItem>();
+        readonly List<LootItem> registerCash = new List<LootItem>();
         float aimTime;
         float alarmSoundAt;
         float alarmUntil;
         bool anyCashThisRobbery;
+        PlayerState robber;
+        PlayerState aimingPlayer;
+
+        /// <summary>Whoever started the current or most recent hold-up.</summary>
+        public PlayerState Robber => robber;
 
         public RobberyStateMachine Machine { get; private set; }
         public BoxZone Zone => zone;
@@ -53,6 +59,12 @@ namespace SmallTown.Crime
 
         void Start()
         {
+            // The host runs every shop. Clients only show what it tells them.
+            if (!Net.IsHost)
+            {
+                enabled = false;
+                return;
+            }
             GameBalance balance = GameSession.Instance.Balance;
             Machine = new RobberyStateMachine(new RobberyStateMachine.Config
             {
@@ -83,37 +95,47 @@ namespace SmallTown.Crime
         {
             GameSession session = GameSession.Instance;
             if (session == null || Machine == null) return;
-            Vector3 playerHead = session.Rig.Head.position;
-            bool playerInside = zone.Contains(playerHead);
+            // The hold-up keeps going while the robber (or, failing that, anyone) is still inside.
+            bool robberInside = false;
+            foreach (PlayerState player in session.Players)
+            {
+                if (!zone.Contains(player.Head)) continue;
+                if (robber == null || player == robber || session.FindPlayer(robber.ClientId) == null) robberInside = true;
+            }
 
-            Machine.Tick(deltaTime, playerInside);
+            Machine.Tick(deltaTime, robberInside);
 
             if (Machine.State == RobberyState.Idle)
             {
-                bool aimed = false;
-                if (playerInside)
+                PlayerState aimer = null;
+                foreach (Pistol pistol in Pistol.All)
                 {
-                    foreach (Pistol pistol in Pistol.All)
-                    {
-                        if (pistol.IsHeld && AimedAtCashier(pistol, session.Balance.holdUpRange)) aimed = true;
-                    }
+                    if (!pistol.IsHeld || !zone.Contains(pistol.AimOrigin)) continue;
+                    if (AimedAtCashier(pistol, session.Balance.holdUpRange)) aimer = session.OwnerOf(pistol.GetComponent<GrabbableItem>()) ?? session.Local;
                 }
-                aimTime = aimed ? aimTime + deltaTime : 0f;
-                if (aimTime >= session.Balance.holdUpAimSeconds) StartHoldUp();
+                aimTime = aimer != null ? aimTime + deltaTime : 0f;
+                aimingPlayer = aimer;
+                if (aimTime >= session.Balance.holdUpAimSeconds) StartHoldUp(aimer);
             }
 
             CheckShoplifting(session);
+            CheckAccomplices(session);
 
             if (Time.time < alarmUntil && Time.time >= alarmSoundAt)
             {
                 alarmSoundAt = Time.time + 0.7f;
-                GameFeedback.Play(FeedbackSound.Alarm, alarmPoint != null ? alarmPoint.position : transform.position);
+                GameFeedback.PlayShared(FeedbackSound.Alarm, alarmPoint != null ? alarmPoint.position : transform.position);
             }
             RefreshStatus();
         }
 
-        /// <summary>Starts the hold-up if the shop is open and stocked.</summary>
-        public bool StartHoldUp() => Machine.TryStart();
+        /// <summary>Starts the hold-up if the shop is open and stocked. The named player is the robber.</summary>
+        public bool StartHoldUp(PlayerState by = null)
+        {
+            if (Machine.State != RobberyState.Idle) return false;
+            robber = by ?? GameSession.Instance.Actor;
+            return Machine.TryStart();
+        }
 
         bool AimedAtCashier(Pistol pistol, float range)
         {
@@ -125,18 +147,19 @@ namespace SmallTown.Crime
             return !Physics.Linecast(pistol.AimOrigin, cashier.EyePosition, 1 << GameLayers.World, QueryTriggerInteraction.Ignore);
         }
 
-        void OnPistolFired(Pistol pistol)
+        void OnPistolFired(Pistol pistol, Vector3 origin, PlayerState shooter)
         {
-            if (Machine != null && Machine.State == RobberyState.Idle && zone.Contains(pistol.AimOrigin)) StartHoldUp();
+            if (Machine != null && Machine.State == RobberyState.Idle && zone.Contains(origin)) StartHoldUp(shooter);
         }
 
         void OnStarted()
         {
             aimTime = 0f;
             anyCashThisRobbery = false;
+            registerCash.Clear();
             if (cashier != null) cashier.pose = NpcPose.HandsUp;
-            HudToast.Show("Hold-up! Grab the cash as it comes out.");
-            CrimeEvents.Raise(CrimeKind.ArmedRobbery, transform.position, 2);
+            GameSession.Instance.TellAll("Hold-up at " + displayName + "! Grab the cash as it comes out.");
+            CrimeEvents.Raise(CrimeKind.ArmedRobbery, transform.position, 2, robber);
         }
 
         void OnBundle(int count)
@@ -144,29 +167,35 @@ namespace SmallTown.Crime
             if (cashPrefab == null || cashSpawn == null) return;
             GameBalance balance = GameSession.Instance.Balance;
             Vector3 jitter = new Vector3((count % 3 - 1) * 0.12f, 0.05f + count * 0.012f, (count % 2) * 0.1f);
-            LootItem cash = Instantiate(cashPrefab, cashSpawn.position + jitter, cashSpawn.rotation);
+            LootItem cash = Net.Spawn(cashPrefab, cashSpawn.position + jitter, cashSpawn.rotation);
             cash.value = balance.bundleValue;
             cash.isCash = true;
             cash.owner = siteId;
             cash.MarkStolen();
+            // Hot until the alarm has had time to ring: no pocketing it before anyone knows.
+            cash.hotUntil = Time.time + balance.alarmDelay + 4f;
+            registerCash.Add(cash);
             anyCashThisRobbery = true;
-            GameFeedback.Play(FeedbackSound.Cash, cashSpawn.position);
+            GameFeedback.PlayShared(FeedbackSound.Cash, cashSpawn.position);
         }
 
         void OnAlarm()
         {
             alarmUntil = Time.time + 12f;
             Vector3 position = alarmPoint != null ? alarmPoint.position : transform.position;
-            GameSession.Instance.Wanted.ReportCrime(2, position);
-            HudToast.Show("The alarm is ringing. Police are on the way.");
+            // Only the robber is wanted for the robbery itself. See CheckAccomplices for helpers.
+            PlayerState culprit = robber ?? GameSession.Instance.Local;
+            culprit.Wanted.ReportCrime(2, position);
+            GameSession.Instance.TellAll("The alarm is ringing. Police are on the way.");
         }
 
         void OnEnded(bool emptied)
         {
             if (cashier != null) cashier.pose = NpcPose.Cower;
-            if (anyCashThisRobbery) GameSession.Instance.Wallet.Profile.robberiesCompleted++;
+            PlayerState culprit = robber ?? GameSession.Instance.Local;
+            if (anyCashThisRobbery) culprit.Wallet.Profile.robberiesCompleted++;
             GameSession.Instance.MarkDirty();
-            HudToast.Show(emptied ? "Register is empty. Get out of here!" : "The hold-up is over.");
+            culprit.Tell(emptied ? "Register is empty. Get out of here!" : "The hold-up is over.");
         }
 
         void OnRestocked()
@@ -187,7 +216,7 @@ namespace SmallTown.Crime
                                (existing.transform.position - merchSpots[i].position).sqrMagnitude < 0.3f * 0.3f;
                 if (inPlace) continue;
                 LootItem prefab = merchPrefabs[i % merchPrefabs.Length];
-                LootItem item = Instantiate(prefab, merchSpots[i].position + Vector3.up * 0.09f, merchSpots[i].rotation);
+                LootItem item = Net.Spawn(prefab, merchSpots[i].position + Vector3.up * 0.09f, merchSpots[i].rotation);
                 item.owner = siteId;
                 stock[i] = item;
             }
@@ -202,13 +231,39 @@ namespace SmallTown.Crime
                 if (zone.Contains(item.transform.position)) continue;
 
                 item.MarkStolen();
-                // During a hold-up the alarm already covers it. Otherwise the cashier shouts.
+                // During a hold-up the alarm already covers it. Otherwise the cashier shouts
+                // at whoever is carrying it, and only they are wanted for it.
                 if (Machine.State == RobberyState.Idle)
                 {
-                    CrimeEvents.Raise(CrimeKind.Shoplifting, item.transform.position, 1);
-                    session.Wanted.ReportCrime(1, item.transform.position);
-                    HudToast.Show("\"Hey! You didn't pay for that!\"");
+                    PlayerState thief = session.OwnerOf(item.Item) ?? session.Local;
+                    CrimeEvents.Raise(CrimeKind.Shoplifting, item.transform.position, 1, thief);
+                    thief.Wanted.ReportCrime(1, item.transform.position);
+                    thief.Tell("\"Hey! You didn't pay for that!\"");
                 }
+            }
+        }
+
+        /// <summary>
+        /// Standing next to a robbery is not a crime. Picking up the register's cash
+        /// once the alarm is ringing is: that player becomes wanted too.
+        /// </summary>
+        void CheckAccomplices(GameSession session)
+        {
+            if (!Machine.AlarmRaised || registerCash.Count == 0) return;
+            for (int i = registerCash.Count - 1; i >= 0; i--)
+            {
+                LootItem cash = registerCash[i];
+                if (cash == null)
+                {
+                    registerCash.RemoveAt(i);
+                    continue;
+                }
+                if (cash.Item.State == ItemState.Free) continue;
+                PlayerState carrier = session.OwnerOf(cash.Item);
+                if (carrier == null || carrier == robber || carrier.Wanted.Level >= 2) continue;
+                // Reported at the shop, not where they are now: nobody saw where they went.
+                carrier.Wanted.ReportCrime(2, alarmPoint != null ? alarmPoint.position : transform.position);
+                carrier.Tell("You took stolen cash. Now you are wanted too.");
             }
         }
 

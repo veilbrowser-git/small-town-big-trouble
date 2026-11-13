@@ -12,6 +12,11 @@ namespace SmallTown.Interaction
     public sealed class PunchButton : MonoBehaviour
     {
         public UnityEvent onPressed = new UnityEvent();
+        /// <summary>
+        /// Set by the network layer. On a client it sends the press to the host and
+        /// returns true, so the action runs once, on the host, on that player's behalf.
+        /// </summary>
+        public System.Func<PunchButton, bool> Relay;
         [Min(0f)] public float cooldown = 0.6f;
         [SerializeField] Transform cap;
         public float pressDepth = 0.03f;
@@ -42,7 +47,7 @@ namespace SmallTown.Interaction
             readyAt = Time.time + cooldown;
             pressAnimation = 1f;
             GameFeedback.Play(FeedbackSound.Click, transform.position, 0.9f);
-            onPressed.Invoke();
+            if (Relay == null || !Relay(this)) onPressed.Invoke();
             return true;
         }
 

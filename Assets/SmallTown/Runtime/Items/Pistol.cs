@@ -41,8 +41,14 @@ namespace SmallTown.Items
         public Vector3 AimOrigin => muzzle != null ? muzzle.position : transform.position;
         public Vector3 AimDirection => muzzle != null ? muzzle.forward : transform.forward;
 
-        /// <summary>Raised for every shot actually fired.</summary>
-        public static event Action<Pistol> Fired;
+        /// <summary>Raised on the host for every shot: the pistol, where it was fired from, and who fired.</summary>
+        public static event Action<Pistol, Vector3, PlayerState> Fired;
+
+        /// <summary>
+        /// Set by the network layer. On a client it sends the shot to the host and
+        /// returns true; the host then decides what was hit.
+        /// </summary>
+        public Func<Vector3, Vector3, bool> ShotRelay;
 
         public void Configure(Transform muzzlePoint, LineRenderer tracerLine, Transform muzzleFlash, TMP_Text label)
         {
@@ -98,27 +104,44 @@ namespace SmallTown.Items
             Ammo--;
             Vector3 origin = AimOrigin;
             Vector3 direction = AimDirection;
+            PlayShot(origin, direction);
+            if (holder != null) holder.Rig.Input?.Haptic(holder.Hand, 1f, 0.09f);
+
+            // The shooter sees and hears the shot at once. What it hit is decided by the host.
+            if (ShotRelay == null || !ShotRelay(origin, direction))
+            {
+                GameSession session = GameSession.Instance;
+                ResolveShot(origin, direction, session != null ? session.Actor : null);
+            }
+
+            if (Ammo == 0) StartReload();
+            RefreshLabel();
+            return true;
+        }
+
+        /// <summary>Tracer, flash and bang. Purely cosmetic; safe to run on any machine.</summary>
+        public void PlayShot(Vector3 origin, Vector3 direction)
+        {
             Vector3 end = origin + direction * range;
+            if (Physics.Raycast(origin, direction, out RaycastHit hit, range, HitMask, QueryTriggerInteraction.Ignore)) end = hit.point;
+            ShowEffects(origin, end);
+            GameFeedback.Play(FeedbackSound.Gunshot, origin);
+        }
+
+        /// <summary>Host side of a shot: what it hits, who notices, and who is to blame.</summary>
+        public void ResolveShot(Vector3 origin, Vector3 direction, PlayerState shooter)
+        {
             if (Physics.Raycast(origin, direction, out RaycastHit hit, range, HitMask, QueryTriggerInteraction.Ignore))
             {
-                end = hit.point;
                 if (hit.rigidbody != null && !hit.rigidbody.isKinematic)
                 {
                     hit.rigidbody.AddForceAtPosition(direction * impactForce, hit.point, ForceMode.Impulse);
                 }
                 var shootable = hit.collider.GetComponentInParent<IShootable>();
-                shootable?.OnShot(hit.point, direction);
+                shootable?.OnShot(hit.point, direction, shooter);
             }
-
-            ShowEffects(origin, end);
-            GameFeedback.Play(FeedbackSound.Gunshot, origin);
-            if (holder != null) holder.Rig.Input?.Haptic(holder.Hand, 1f, 0.09f);
-            CrimeEvents.Raise(CrimeKind.Gunfire, origin, 2);
-            Fired?.Invoke(this);
-
-            if (Ammo == 0) StartReload();
-            RefreshLabel();
-            return true;
+            CrimeEvents.Raise(CrimeKind.Gunfire, origin, 2, shooter);
+            Fired?.Invoke(this, origin, shooter);
         }
 
         void StartReload()

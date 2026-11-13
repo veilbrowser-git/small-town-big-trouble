@@ -62,12 +62,18 @@ namespace SmallTown.Jobs
             orderLabel = label;
         }
 
-        void Start() => RefreshLabel();
+        void Start()
+        {
+            if (Net.IsHost) RefreshLabel();
+        }
 
         /// <summary>Wired to the TAKE ORDER button.</summary>
         public void TakeOrder()
         {
-            if (!Accept() && State == JobState.Available) HudToast.Show("Finish or cancel your current job first.");
+            if (!Accept() && State == JobState.Available && GameSession.Instance != null)
+            {
+                GameSession.Instance.Actor.Tell("Finish or cancel your current job first.");
+            }
         }
 
         /// <summary>Wired to the CANCEL button.</summary>
@@ -78,13 +84,13 @@ namespace SmallTown.Jobs
             target = customers.Length > 0 ? customers[nextCustomer++ % customers.Length] : null;
             acceptedAt = Time.time;
             StartAssembly(Recipes[nextRecipe++ % Recipes.Length]);
-            HudToast.Show("Order up! " + RecipeText() + " for " + (target != null ? target.placeName : "a customer") + ".");
+            Announce("Order up! " + RecipeText() + " for " + (target != null ? target.placeName : "a customer") + ".");
         }
 
         void StartAssembly(string[] recipe)
         {
-            if (pizza != null) Destroy(pizza.gameObject);
-            pizza = Instantiate(pizzaPrefab, baseSpawn.position, baseSpawn.rotation);
+            if (pizza != null) Net.Despawn(pizza.gameObject);
+            pizza = Net.Spawn(pizzaPrefab, baseSpawn.position, baseSpawn.rotation);
             pizza.Required.Clear();
             pizza.Required.AddRange(recipe);
             cookTimer = 0f;
@@ -98,7 +104,7 @@ namespace SmallTown.Jobs
             {
                 pizza.Item.ForceReleaseAll();
                 if (GameSession.Instance != null && GameSession.Instance.Bag != null) GameSession.Instance.Bag.Remove(pizza.Item);
-                Destroy(pizza.gameObject);
+                Net.Despawn(pizza.gameObject);
             }
             pizza = null;
             if (target != null) target.SetWaiting(false);
@@ -122,7 +128,7 @@ namespace SmallTown.Jobs
             {
                 // Lost item recovery: no penalty beyond redoing the cooking.
                 var recipe = pizza != null ? new List<string>(pizza.Required).ToArray() : Recipes[0];
-                HudToast.Show("The pizza is gone. A fresh base is on the counter.");
+                Announce("The pizza is gone. A fresh base is on the counter.");
                 StartAssembly(recipe);
                 return;
             }
@@ -141,7 +147,7 @@ namespace SmallTown.Jobs
                         if (cookTimer >= balance.pizzaCookSeconds)
                         {
                             pizza.SetCooked();
-                            GameFeedback.Play(FeedbackSound.Ding, oven.transform.position);
+                            GameFeedback.PlayShared(FeedbackSound.Ding, oven.transform.position);
                             SetStage(Stage.Box);
                         }
                         else
@@ -154,7 +160,7 @@ namespace SmallTown.Jobs
                     if (resting && boxing.Contains(position))
                     {
                         pizza.SetBoxed();
-                        GameFeedback.Play(FeedbackSound.Store, boxing.transform.position);
+                        GameFeedback.PlayShared(FeedbackSound.Store, boxing.transform.position);
                         if (target != null) target.SetWaiting(true);
                         SetStage(Stage.Deliver);
                     }

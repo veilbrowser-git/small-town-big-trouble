@@ -14,7 +14,9 @@
     "Unity.RenderPipelines.Core.Runtime",
     "Unity.TextMeshPro",
     "Unity.TextMeshPro.Editor",
-    "Unity.AI.Navigation"
+    "Unity.AI.Navigation",
+    "Unity.Netcode.Runtime",
+    "Unity.Collections"
   ],
   "includePlatforms": [
     "Editor"

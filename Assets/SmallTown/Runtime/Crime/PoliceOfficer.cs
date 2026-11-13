@@ -45,6 +45,9 @@ namespace SmallTown.Crime
         float stunUntil;
         OfficerState afterStun;
 
+        /// <summary>The player this officer is currently dealing with, chosen by the dispatcher.</summary>
+        public PlayerState Focus { get; set; }
+
         public OfficerState State { get; private set; } = OfficerState.Inactive;
         public bool SeesSuspect { get; private set; }
         public NpcBody Body => body;
@@ -67,6 +70,8 @@ namespace SmallTown.Crime
         {
             gameObject.SetActive(true);
             if (agent == null) agent = GetComponent<NavMeshAgent>();
+            agent.enabled = true;
+            if (body != null) body.SetPresent(true);
             if (NavMesh.SamplePosition(position, out NavMeshHit hit, 3f, NavMesh.AllAreas)) position = hit.position;
             agent.Warp(position);
             SetState(OfficerState.Patrol);
@@ -74,9 +79,14 @@ namespace SmallTown.Crime
 
         public void Deactivate()
         {
+            // Off duty: the object stays in the scene (it is a shared network object) but
+            // is invisible, untouchable and does not think.
             SeesSuspect = false;
+            Focus = null;
             State = OfficerState.Inactive;
-            gameObject.SetActive(false);
+            if (agent == null) agent = GetComponent<NavMeshAgent>();
+            if (agent != null) agent.enabled = false;
+            if (body != null) body.SetPresent(false);
         }
 
         public void StartPatrol() => SetState(OfficerState.Patrol);
@@ -95,7 +105,7 @@ namespace SmallTown.Crime
             SetState(OfficerState.GiveUp);
         }
 
-        public void OnShot(Vector3 point, Vector3 direction)
+        public void OnShot(Vector3 point, Vector3 direction, PlayerState shooter)
         {
             if (State == OfficerState.Inactive) return;
             GameBalance balance = GameSession.Instance.Balance;
@@ -104,8 +114,9 @@ namespace SmallTown.Crime
             focus = transform.position;
             SetState(OfficerState.Stunned);
             // Shooting an officer is the fastest way to the top wanted level.
-            CrimeEvents.Raise(CrimeKind.AssaultOnOfficer, transform.position, 3);
-            GameSession.Instance.Wanted.ReportCrime(3, transform.position);
+            if (shooter == null) shooter = GameSession.Instance.Local;
+            CrimeEvents.Raise(CrimeKind.AssaultOnOfficer, transform.position, 3, shooter);
+            shooter.Wanted.ReportCrime(3, transform.position);
         }
 
         // ------------------------------------------------------------------ Senses

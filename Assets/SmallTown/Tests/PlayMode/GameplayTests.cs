@@ -500,7 +500,7 @@ namespace SmallTown.Tests
         sealed class ShotCounter : MonoBehaviour, IShootable
         {
             public int hits;
-            public void OnShot(Vector3 point, Vector3 direction) => hits++;
+            public void OnShot(Vector3 point, Vector3 direction, PlayerState shooter) => hits++;
         }
 
         [UnityTest]

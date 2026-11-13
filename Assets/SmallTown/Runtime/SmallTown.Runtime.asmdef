@@ -6,7 +6,10 @@
     "Unity.XR.CoreUtils",
     "Unity.XR.Interaction.Toolkit",
     "Unity.TextMeshPro",
-    "Unity.AI.Navigation"
+    "Unity.AI.Navigation",
+    "Unity.Netcode.Runtime",
+    "Unity.Collections",
+    "Unity.Networking.Transport"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

@@ -167,6 +167,10 @@ GameObject:
   - component: {fileID: 7412792268637349764}
   - component: {fileID: 835646249043440621}
   - component: {fileID: 1360096408051701157}
+  - component: {fileID: 5563949931009899541}
+  - component: {fileID: 2518734158070134763}
+  - component: {fileID: 2196577073527055195}
+  - component: {fileID: 4871800019203932765}
   m_Layer: 8
   m_Name: Pizza
   m_TagString: Untagged
@@ -279,6 +283,75 @@ MonoBehaviour:
   boxVisual: {fileID: 3329656699926889204}
   toppingRoot: {fileID: 7025458617368236169}
   toppingChipPrefab: {fileID: 7542048745001083842, guid: f629ebfc134224e949abebb0beea69c3, type: 3}
+--- !u!114 &5563949931009899541
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3389706678589062834}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  GlobalObjectIdHash: 0
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  m_InScenePlacedDisabledByDefault: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  m_InScenePlaced: 0
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 1
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
+--- !u!114 &2518734158070134763
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3389706678589062834}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dc06da7936568429c80b162026352dcc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: SmallTown.Runtime::SmallTown.Networking.NetPose
+  ShowTopMostFoldoutHeaderGroup: 1
+  managePhysics: 1
+  smoothing: 18
+  snapDistance: 2.5
+--- !u!114 &2196577073527055195
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3389706678589062834}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b0f76bb5c980a4b808dcc1d038acd528, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: SmallTown.Runtime::SmallTown.Networking.NetItem
+  ShowTopMostFoldoutHeaderGroup: 1
+--- !u!114 &4871800019203932765
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3389706678589062834}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c4d793c2d14c04c74b49d30a4e0c87e3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: SmallTown.Runtime::SmallTown.Networking.NetPizza
+  ShowTopMostFoldoutHeaderGroup: 1
 --- !u!1 &5989593759005707807
 GameObject:
   m_ObjectHideFlags: 0

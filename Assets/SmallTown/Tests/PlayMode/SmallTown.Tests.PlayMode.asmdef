@@ -8,7 +8,9 @@
     "Unity.InputSystem",
     "Unity.TextMeshPro",
     "Unity.InputSystem.TestFramework",
-    "Unity.AI.Navigation"
+    "Unity.AI.Navigation",
+    "Unity.Netcode.Runtime",
+    "Unity.Collections"
   ],
   "includePlatforms": [],
   "overrideReferences": true,

@@ -2,6 +2,7 @@ using SmallTown.Economy;
 using SmallTown.Interaction;
 using SmallTown.Items;
 using SmallTown.Jobs;
+using SmallTown.Networking;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
@@ -29,9 +30,22 @@ namespace SmallTown.EditorTools
         static GameObject Save(GameObject root, string name)
         {
             ProjectSetup.EnsureFolder(Folder);
-            GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, Folder + "/" + name + ".prefab");
+            string path = Folder + "/" + name + ".prefab";
+            GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
             Object.DestroyImmediate(root);
+            if (prefab.GetComponent<Unity.Netcode.NetworkObject>() != null)
+            {
+                NetBuilder.VerifyPrefabHash(path);
+                NetBuilder.Register(prefab);
+            }
             return prefab;
+        }
+
+        /// <summary>Makes a town item a shared object: whoever holds it moves it, and the host arbitrates grabs.</summary>
+        static void Share(GameObject root)
+        {
+            NetBuilder.MakeShared(root, true, true, true);
+            root.AddComponent<NetItem>();
         }
 
         static GrabbableItem MakeItem(GameObject go, string id, string displayName, float mass, int storageSize = 1)
@@ -61,6 +75,7 @@ namespace SmallTown.EditorTools
             loot.displayName = "Cash bundle";
             loot.isCash = true;
             loot.stolen = true;
+            Share(root);
             return Save(root, "Cash").GetComponent<LootItem>();
         }
 
@@ -79,6 +94,7 @@ namespace SmallTown.EditorTools
                 loot.definitionId = "merch." + type.id;
                 loot.displayName = type.displayName;
                 loot.value = type.value;
+                Share(root);
                 result[i] = Save(root, "Merch_" + type.id).GetComponent<LootItem>();
             }
             return result;
@@ -94,6 +110,7 @@ namespace SmallTown.EditorTools
             topping.toppingId = id;
             topping.displayName = displayName;
             topping.colour = colour;
+            Share(root);
             return Save(root, "Topping_" + id).GetComponent<Topping>();
         }
 
@@ -131,6 +148,8 @@ namespace SmallTown.EditorTools
             item.storable = true;
             var pizza = root.AddComponent<Pizza>();
             pizza.Configure(dough.GetComponent<Renderer>(), raw, cooked, open, box, chips.transform, chipPrefab);
+            Share(root);
+            root.AddComponent<NetPizza>();
             return Save(root, "Pizza").GetComponent<Pizza>();
         }
 
@@ -175,6 +194,8 @@ namespace SmallTown.EditorTools
             item.snapPose = grip.transform;
             var pistol = root.AddComponent<Pistol>();
             pistol.Configure(muzzle.transform, tracer, flash.transform, ammo);
+            Share(root);
+            root.AddComponent<NetPistol>();
             return Save(root, "Pistol").GetComponent<Pistol>();
         }
     }

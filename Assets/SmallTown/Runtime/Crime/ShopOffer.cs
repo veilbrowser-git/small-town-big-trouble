@@ -44,21 +44,22 @@ namespace SmallTown.Crime
             GameSession session = GameSession.Instance;
             if (session == null) return TransactionResult.Invalid;
             int price = Price;
-            TransactionResult result = session.Wallet.Purchase(unlockId, price);
+            PlayerState buyer = session.Actor;
+            TransactionResult result = buyer.Wallet.Purchase(unlockId, price);
             switch (result)
             {
                 case TransactionResult.Applied:
-                    GameFeedback.Play(FeedbackSound.Cash, transform.position);
-                    HudToast.Show("Bought " + displayName + "  -$" + price);
-                    session.ApplyUnlocks();
+                    GameFeedback.PlayShared(FeedbackSound.Cash, transform.position);
+                    buyer.Tell("Bought " + displayName + "  -$" + price);
+                    if (buyer.IsLocal) session.ApplyUnlocks();
                     purchased.Invoke();
                     break;
                 case TransactionResult.Duplicate:
-                    HudToast.Show("You already own the " + displayName + ".");
+                    buyer.Tell("You already own the " + displayName + ".");
                     break;
                 case TransactionResult.InsufficientFunds:
-                    GameFeedback.Play(FeedbackSound.Reject, transform.position);
-                    HudToast.Show("The " + displayName + " costs $" + price + ". You need $" + (price - session.Wallet.Cash) + " more.");
+                    if (buyer.IsLocal) GameFeedback.Play(FeedbackSound.Reject, transform.position);
+                    buyer.Tell("The " + displayName + " costs $" + price + ". You need $" + (price - buyer.Wallet.Cash) + " more.");
                     break;
             }
             Refresh();

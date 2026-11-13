@@ -15,6 +15,9 @@ GameObject:
   - component: {fileID: 1428149807778508300}
   - component: {fileID: 5009598800082549246}
   - component: {fileID: 1089204436481875979}
+  - component: {fileID: 7258386143460941900}
+  - component: {fileID: 63601459524274743}
+  - component: {fileID: 2058708808843949691}
   m_Layer: 8
   m_Name: Topping_cheese
   m_TagString: Untagged
@@ -178,3 +181,59 @@ MonoBehaviour:
   toppingId: cheese
   displayName: Cheese
   colour: {r: 1, g: 0.84705883, b: 0.41960785, a: 1}
+--- !u!114 &7258386143460941900
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3342634848967838310}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  GlobalObjectIdHash: 0
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  m_InScenePlacedDisabledByDefault: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  m_InScenePlaced: 0
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 1
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
+--- !u!114 &63601459524274743
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3342634848967838310}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dc06da7936568429c80b162026352dcc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: SmallTown.Runtime::SmallTown.Networking.NetPose
+  ShowTopMostFoldoutHeaderGroup: 1
+  managePhysics: 1
+  smoothing: 18
+  snapDistance: 2.5
+--- !u!114 &2058708808843949691
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3342634848967838310}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b0f76bb5c980a4b808dcc1d038acd528, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: SmallTown.Runtime::SmallTown.Networking.NetItem
+  ShowTopMostFoldoutHeaderGroup: 1

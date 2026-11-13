@@ -16,7 +16,7 @@ Last updated: 2026-11-13.
 |---|---|
 | A. XR foundation and movement | Implemented. Automated and build verified. Headset testing outstanding |
 | B. Complete solo gameplay loop | Implemented. Automated and build verified. Headset testing outstanding |
-| C. Cooperative play | Not started. Netcode for GameObjects is installed, no netcode written |
+| C. Cooperative play | Implemented for local network play. Verified with 2 and 4 real connected processes. Headset testing and internet sessions outstanding |
 | D. Town progression | Not started. The rig already supports seats (see below) |
 | E. Expansion and polish | Not started |
 
@@ -62,7 +62,8 @@ Last updated: 2026-11-13.
 | Android development build | Yes | Build |
 
 Test totals from the last run: see `Logs/editmode-results.xml` and `Logs/playmode-results.xml`
-(30 edit mode, 55 play mode, all passing at the time of writing). Rerun with `./run_checks.sh tests`.
+(all passing at the time of writing). Rerun with `./run_checks.sh tests`. Co-op is additionally
+checked by `python3 Tools/coop_check.py --players 2` and `--players 4`.
 
 ![Movement gym overview](movement-test-overview.png)
 ![Player from behind](player-third-person.png)
@@ -108,6 +109,49 @@ houses, and any second job or robbery type (Milestone D).
 ![Hold-up in progress](town-robbery-play.png)
 ![The panda model](panda-model.png)
 
+## Milestone C feature status
+
+"Multi-process" below means `Tools/coop_check.py`: separate copies of the desktop build, each a
+real network peer over UDP on localhost, driven by a scripted bot, with their reports compared.
+It proves replication and authority. It does not prove anything about real headsets, real Wi-Fi,
+latency or packet loss: localhost has none.
+
+| Feature | Implemented | Verified by |
+|---|---|---|
+| Menu: solo, host, join by typed address; solo is a private session of one | Yes | Multi-process for host and join. Typing on the keypad not tested |
+| 1 to 4 players; a fifth is refused; solo refuses everyone | Yes | 2 and 4 players multi-process. Refusals not tested |
+| Head and hands of every player shown to the others, smoothed remotely, never locally | Yes | Players see each other (count). Visual quality not checked |
+| Different fur colour per player | Yes | Not checked |
+| Shared items: one holder, host arbitrates grabs, holder simulates | Yes | Multi-process: 3-way contested grab has exactly one winner |
+| Item position follows its holder on every machine | Yes | Multi-process (probe run; delivery depends on it) |
+| Passing an item between players (host makes pizza, client carries it) | Yes | Multi-process |
+| Satchel contents hidden from others, tracked by the host | Yes | Multi-process (bagged cash is banked or confiscated correctly) |
+| Disconnect while holding an item releases it; nothing stays grabbed | Yes | Multi-process |
+| Job state shared; any player can do any step; everyone is paid once | Yes | Multi-process with 4 players and automated rule test |
+| Toppings validated by the host (must actually be at the pizza) | Yes | Multi-process for the accepted case. Rejection not tested |
+| Robbery shared: same register sign, same cash bundles on every machine | Yes | Multi-process |
+| Pistol: shooter sees it at once, host decides the hit, others see it | Yes | Aim-triggered hold-up by a client is multi-process verified. Shot effects on other machines not checked |
+| Wanted level per player; bystanders stay clean; taking the cash makes you an accomplice | Yes | Multi-process and automated rule tests |
+| Police and NPCs run on the host, appear in the same place for everyone | Yes | Multi-process (same officer count; position compared in the probe run) |
+| Each player escapes on their own clock; only the wanted are chased or arrested | Yes | Automated rule tests; multi-process for one escape and one arrest |
+| Arrest happens to one player only: their fine, their stolen goods, their fade | Yes | Multi-process and automated rule test |
+| Purchases and payouts decided on the host and mirrored to the player's own save | Yes | Multi-process for amounts. Writing the save file on a client not tested (bots run with saving off) |
+| Stolen cash cannot be pocketed in the seconds before the alarm | Yes | Multi-process (found by it, in fact) |
+| Host leaves: clients return to the menu with an explanation | Yes | Multi-process |
+| Host's sanity check on player movement (rejects impossible jumps, allows announced teleports) | Yes | Automated for the rule. Never triggered in a real session |
+| Host can cancel a stuck job (`NetSession.HostResetJob`) | Yes | Not tested, and there is no button for it yet |
+| Internet play via Unity Multiplayer Services sessions | No | See below |
+
+**Not done in Milestone C**
+
+- **Internet sessions.** `com.unity.services.multiplayer` is not installed. It needs this
+  project linked to a Unity Cloud project (Edit > Project Settings > Services), which is an
+  account step I cannot do. Until then play is local network only, by typed address.
+- **Two players lifting one heavy object.** Heavy items exist only in the gym, which is
+  single-player. The force-per-hand design supports it; the networking for a shared lift is not written.
+- **Late joining mid-robbery or mid-job** should work (state is replicated) but is untested.
+- **Vehicles and passengers** are Milestone D.
+
 ## Not verified, needs a headset
 
 1. Whether the movement **feels** right. Every tuning value is a first guess based on the
@@ -125,6 +169,9 @@ houses, and any second job or robbery type (Milestone D).
    police are too fast or too slow for real arm-running.
 9. Town scale. It is built for 0.8 m eyes on paper; doorways, counters and shelves need a look
    from inside the headset.
+10. Co-op between real headsets: joining over Wi-Fi, how remote players look and move with real
+    latency, whether waiting for the host's answer makes grabbing feel sluggish, and frame rate
+    with four players.
 
 ## Known issues and limits
 
@@ -142,6 +189,17 @@ houses, and any second job or robbery type (Milestone D).
 - PC VR: OpenXR is enabled for Android only. The setup script enables the desktop loader
   automatically when run on a Windows editor.
 - No licence file has been added to the repository yet.
+- Netcode's own NetworkTransform did not deliver client-held item positions to the host in this
+  setup, so shared objects use a small pose component of ours (`NetPose`). Cause not identified.
+- A client's grab waits for the host's answer (one round trip). Instant on a good local
+  network; could feel late on a bad one. There is no client-side prediction of grabs.
+- Host migration is not supported: if the host leaves, the game ends for everyone.
+- The Town end-to-end test once read a wanted level of 0 straight after a robbery during a full
+  test run, and passed when rerun. The cause was not pinned down (an early arrest by a nearby
+  officer is the likely one). The test now records peak values over the window instead of the
+  final instant, and has passed in every run since.
+- The join keypad accepts any text; a wrong address just times out after a few seconds.
+- NPCs and remote players are not solid: you can move through them.
 - NPCs and police do not physically block the player or each other; an arrest is by proximity.
 - The patrol car drives on a rail along the main street. It does not path-find.
 - Police speed is tuned against the simulated stride (about 2.2 m/s). Real players may be much
@@ -192,7 +250,7 @@ Unity 6000.6.8f1. Versions are the ones this editor release lists as verified.
 | com.unity.xr.management | 4.7.0 | XR loader management |
 | com.unity.xr.openxr | 1.18.0 | Quest runtime |
 | com.unity.xr.interaction.toolkit | 3.6.1 | Installed for UI interaction later; brings XR Core Utilities 2.6.0 (XROrigin) |
-| com.unity.netcode.gameobjects | 2.13.3 | Milestone C. Brings Unity Transport |
+| com.unity.netcode.gameobjects | 2.13.3 | Co-op. Brings Unity Transport |
 | com.unity.ai.navigation | 2.0.16 | Police navigation, Milestone B |
 | com.unity.ugui | 2.6.0 | TextMeshPro world labels |
 | com.unity.test-framework | 1.8.0 | Tests |
@@ -214,16 +272,18 @@ API notes checked against the installed package sources:
 
 Before building further:
 
-1. Install the APK on a Quest 3 or 3S. Play the gym, then the town loop. Tune
-   `HandLocomotionSettings` and `GameBalance` from what you feel.
-2. Fix paw, pistol and wrist device orientation from that session.
-3. Record measured frame rate here.
+1. Install the APK on two Quest headsets on the same Wi-Fi. One hosts, one joins by address.
+   Play the gym alone first, then a delivery and a robbery together.
+2. Tune `HandLocomotionSettings` and `GameBalance` from what you feel; fix paw, pistol and wrist
+   device orientation.
+3. Record measured frame rate here, solo and with other players.
+4. To enable internet play: link the project to Unity Cloud, add `com.unity.services.multiplayer`,
+   and add a join-code path beside the address path in `NetLauncher`.
 
-Milestone C (co-op), in order:
+Milestone D (town progression), in order:
 
-1. Install `com.unity.services.multiplayer`; local direct-connect first (Unity Transport), then sessions.
-2. Networked player: head, hands, avatar palette. Remote smoothing only.
-3. Item ownership: grab requests arbitrated by the host; release on disconnect (the hook exists).
-4. Move GameSession to host authority: per-player wallets and wanted trackers keyed by profile ID.
-5. Replicate job, robbery and police state. Verify with two players, then four.
-6. Return-to-menu flow when the host leaves.
+1. The drivable car: seats (the rig already has seat mode), steering, cargo, flip recovery,
+   networked with driver authority.
+2. The upgraded apartment and furniture placement with storage.
+3. A second job (package delivery) on the job framework.
+4. A second robbery type (house burglary) on the robbery framework.
